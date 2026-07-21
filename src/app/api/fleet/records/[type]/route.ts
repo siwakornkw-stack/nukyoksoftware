@@ -5,7 +5,8 @@ import { getSession } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { put } from "@/lib/storage";
 import { normalizeDate } from "@/lib/fleet/dates";
-import { delegate, getRecordType } from "@/lib/fleet/record-types";
+import { getRecordType } from "@/lib/fleet/record-types";
+import { delegate } from "@/lib/fleet/record-delegates";
 
 export const dynamic = "force-dynamic";
 

@@ -1,10 +1,11 @@
-import { prisma } from "@/lib/db";
-
 // Config-driven registry for the 8 per-vehicle record types. Drives both the
 // generic add form (client) and the create/list/delete API. Each type maps to a
 // Prisma delegate (accessed via prisma[delegate]) and a flat list of field
 // specs. File-typed fields are uploaded via storage.put() and stored as a url
 // string in the named column.
+//
+// This module is imported by a client component, so it must stay free of
+// server-only imports. The prisma lookup lives in ./record-delegates.
 
 export type FieldType = "text" | "number" | "date" | "money" | "file";
 
@@ -34,22 +35,6 @@ export type RecordDelegate =
   | "repairVehicle"
   | "gasolineCost"
   | "drainTheOilVehicle";
-
-// A minimal shape common to every delegate we use. Enough to call the CRUD
-// methods generically without fighting Prisma's per-model generics.
-interface GenericDelegate {
-  findMany(args: {
-    where: Record<string, unknown>;
-    orderBy?: Record<string, "asc" | "desc">;
-  }): Promise<Record<string, unknown>[]>;
-  create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
-  findUnique(args: { where: Record<string, unknown> }): Promise<Record<string, unknown> | null>;
-  delete(args: { where: Record<string, unknown> }): Promise<unknown>;
-}
-
-export function delegate(def: RecordTypeDef): GenericDelegate {
-  return (prisma as unknown as Record<string, GenericDelegate>)[def.delegate];
-}
 
 export const RECORD_TYPES: RecordTypeDef[] = [
   {

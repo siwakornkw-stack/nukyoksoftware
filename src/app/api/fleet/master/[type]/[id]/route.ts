@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { getSession } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
-import { getMasterType, getDelegate } from "@/lib/fleet/master-types";
+import { getMasterType } from "@/lib/fleet/master-types";
+import { getDelegate } from "@/lib/fleet/master-delegates";
 
 export const dynamic = "force-dynamic";
 

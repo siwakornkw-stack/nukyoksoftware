@@ -1,7 +1,8 @@
-import { prisma } from "@/lib/db";
-
 // Registry so one API route + one page can drive all 8 fleet master-data types.
 // Each entry maps a URL slug to its Prisma delegate, id field, and Thai label.
+//
+// This module is imported by a client component, so it must stay free of
+// server-only imports. The prisma delegates live in ./master-delegates.
 
 export interface MasterTypeDef {
   key: string;
@@ -29,31 +30,4 @@ export const MASTER_TYPES: MasterTypeDef[] = [
 
 export function getMasterType(key: string): MasterTypeDef | undefined {
   return MASTER_TYPES.find((t) => t.key === key);
-}
-
-// Prisma delegates keyed by slug. Typed as a minimal CRUD surface so the shared
-// route handler can call findMany/create/findUnique/delete without per-type code.
-interface Row {
-  [k: string]: unknown;
-}
-interface Delegate {
-  findMany(args: unknown): Promise<Row[]>;
-  create(args: unknown): Promise<Row>;
-  findUnique(args: unknown): Promise<Row | null>;
-  delete(args: unknown): Promise<Row>;
-}
-
-const DELEGATES: Record<string, Delegate> = {
-  "vehicle-type": prisma.vehicleType as unknown as Delegate,
-  "vehicle-brand": prisma.vehicleBrand as unknown as Delegate,
-  "vehicle-owner": prisma.vehicleOwner as unknown as Delegate,
-  "vehicle-department": prisma.vehicleDepartment as unknown as Delegate,
-  "vehicle-status": prisma.vehicleStatus as unknown as Delegate,
-  "fuel-type": prisma.fuelType as unknown as Delegate,
-  "payment-status": prisma.paymentStatus as unknown as Delegate,
-  "vehicle-driver": prisma.vehicleDriver as unknown as Delegate,
-};
-
-export function getDelegate(key: string): Delegate | undefined {
-  return DELEGATES[key];
 }

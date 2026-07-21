@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
-import { delegate, getRecordType } from "@/lib/fleet/record-types";
+import { getRecordType } from "@/lib/fleet/record-types";
+import { delegate } from "@/lib/fleet/record-delegates";
 
 export const dynamic = "force-dynamic";
 
