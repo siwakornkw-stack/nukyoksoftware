@@ -57,7 +57,7 @@ server {
   # or you will expose private files without a login.
 
   location / {
-    proxy_pass http://127.0.0.1:3000;
+    proxy_pass http://127.0.0.1:3002;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -72,6 +72,6 @@ Then point the LINE webhook to `https://your.domain/api/fuel/webhook`.
 If you drop `dhevakij-cron` from PM2, use the system crontab instead:
 
 ```cron
-0 1 * * *   curl -s -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/reminders
-0 1 1 * *   curl -s -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/cron/fuel-monthly
+0 1 * * *   curl -s -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3002/api/cron/reminders
+0 1 1 * *   curl -s -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3002/api/cron/fuel-monthly
 ```
