@@ -1,0 +1,717 @@
+// Unified schema for เทวาวณิชกิจ (dhevakij).
+// Core fleet/finance model is carried over from the nukyok project (multi-tenant,
+// kept intact; a single default Tenant is seeded). Fuel-bill and Debt/AR models
+// are appended below so all three modules share one PostgreSQL database.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native"]
+}
+
+// ======================================================================
+// == FLEET & FINANCE (from nukyok) =====================================
+// ======================================================================
+
+model DomainName {
+  DomainNameId String @id @default(uuid()) @db.VarChar(36)
+  TenantId String @db.VarChar(36)
+  Tenant Tenant @relation(fields: [TenantId], references: [TenantId])
+  HostName String
+  Type String @db.VarChar(15)
+  @@index([TenantId])
+  @@index([HostName])
+}
+
+model Tenant {
+  TenantId String @id @default(uuid()) @db.VarChar(36)
+  Name String
+  Status String @db.VarChar(15)
+  LineImgUrl String?
+  LineChannelAccessToken String?
+  LineChannelSecret String?
+  SystemExpiredDate DateTime
+  Remark String?
+  CreatedTime DateTime @default(now())
+  UpdatedTime DateTime @default(now())
+  Admins Admin[]
+  Customers Customer[]
+  Settings Setting[]
+  DomainName DomainName[]
+  RefreshTokens RefreshTokens[] @relation("TenantToRefreshTokens")
+  RefreshTokensAdmin RefreshTokensAdmin[] @relation("TenantToRefreshTokensAdmin")
+  Vehicles Vehicle[]
+  @@index([TenantId])
+}
+
+model Admin {
+  AdminId String @id @default(uuid()) @db.VarChar(36)
+  TenantId String @db.VarChar(36)
+  Tenant Tenant @relation(fields: [TenantId], references: [TenantId])
+  Status String @db.VarChar(15)
+  ImageUrl String?
+  Name String?
+  Username String
+  Password String
+  MobileNo String @db.VarChar(50)
+  LineId String?
+  LineUserId String?
+  Email String
+  Rank String? @db.VarChar(15)
+  LatestIpAddress String @db.VarChar(45)
+  LatestLogin DateTime?
+  CreatedTime DateTime @default(now())
+  CreatedByUsername String @default("auto")
+  UpdatedTime DateTime @default(now())
+  UpdatedByUsername String?
+  DeletedTime DateTime?
+  DeletedByUsername String?
+  IsOnline Boolean?
+  LatestOnline DateTime?
+  PasswordHash String
+  RefreshTokensAdmin RefreshTokensAdmin[] @relation("AdminToRefreshTokens")
+  @@index([TenantId])
+  @@index([AdminId])
+}
+
+model Customer {
+  CustomerId String @id @default(uuid()) @db.VarChar(36)
+  TenantId String @db.VarChar(36)
+  Tenant Tenant @relation(fields: [TenantId], references: [TenantId])
+  Status String @db.VarChar(15)
+  Role String @default("admin") @db.VarChar(20)
+  ImageUrl String?
+  Name String?
+  Username String
+  Password String
+  MobileNo String @db.VarChar(50)
+  LineId String?
+  LineUserId String?
+  LinePinVerify Boolean?
+  PinLine String? @db.VarChar(4)
+  Email String?
+  LatestIpAddress String @db.VarChar(45)
+  LatestLogin DateTime?
+  CreatedTime DateTime @default(now())
+  CreatedByUsername String @default("auto")
+  UpdatedTime DateTime?
+  UpdatedByUsername String?
+  DeletedTime DateTime?
+  DeletedByUsername String?
+  IsOnline Boolean?
+  LatestOnline DateTime?
+  PasswordHash String
+  RefreshTokens RefreshTokens[] @relation("CustomerToRefreshTokens")
+  Notifications Notification[]
+  @@index([TenantId])
+  @@index([CustomerId])
+}
+
+model Notification {
+  NotificationId String @id @default(uuid()) @db.VarChar(36)
+  CustomerId String @db.VarChar(36)
+  Customer Customer @relation(fields: [CustomerId], references: [CustomerId])
+  Title String
+  Message String
+  IsRead Boolean @default(false)
+  CreatedTime DateTime @default(now())
+  @@index([CustomerId])
+}
+
+model Setting {
+  SettingConfigId String @id @default(uuid()) @db.VarChar(36)
+  TenantId String @db.VarChar(36)
+  Tenant Tenant @relation(fields: [TenantId], references: [TenantId])
+  Key String
+  Value String
+  Category String
+  @@index([TenantId])
+  @@index([SettingConfigId])
+}
+
+model RefreshTokens {
+  RefreshTokenId String    @id @default(uuid()) @db.VarChar(36)
+  HashedToken    String
+  Revoked        Boolean   @default(false)
+  CreatedTime      DateTime  @default(now())
+  UpdatedTime      DateTime?
+  CreatedByUsername      String?
+  UpdatedByUsername      String?
+  CustomerId     String    @db.VarChar(36)
+  TenantId     String    @db.VarChar(36)
+  Customer       Customer  @relation("CustomerToRefreshTokens", fields: [CustomerId], references: [CustomerId], onDelete: Cascade)
+  Tenant       Tenant  @relation("TenantToRefreshTokens", fields: [TenantId], references: [TenantId], onDelete: Cascade)
+  @@index([CustomerId, TenantId])
+  @@index([RefreshTokenId])
+}
+
+model RefreshTokensAdmin {
+  RefreshTokenId String    @id @default(uuid()) @db.VarChar(36)
+  HashedToken    String
+  Revoked        Boolean   @default(false)
+  CreatedTime      DateTime  @default(now())
+  UpdatedTime      DateTime?
+  CreatedByUsername      String?
+  UpdatedByUsername      String?
+  AdminId     String    @db.VarChar(36)
+  TenantId     String    @db.VarChar(36)
+  Admin       Admin  @relation("AdminToRefreshTokens", fields: [AdminId], references: [AdminId], onDelete: Cascade)
+  Tenant       Tenant  @relation("TenantToRefreshTokensAdmin", fields: [TenantId], references: [TenantId], onDelete: Cascade)
+  @@index([AdminId, TenantId])
+  @@index([RefreshTokenId])
+}
+
+model Vehicle {
+  VehicleId String @id @default(uuid()) @db.VarChar(36)
+  No Int @default(autoincrement())
+  TenantId String @db.VarChar(36)
+  Tenant Tenant @relation(fields: [TenantId], references: [TenantId])
+  Status String @db.VarChar(15) @default("active")
+  LicensePlatePrefix String
+  LicensePlateSuffix String
+  LicensePlateProvince String
+  VehicleType VehicleType? @relation(fields: [VehicleTypeId], references: [VehicleTypeId])
+  VehicleTypeId String? @db.VarChar(36)
+  VehicleCharacteristic String
+  VehicleBrand VehicleBrand? @relation(fields: [VehicleBrandId], references: [VehicleBrandId])
+  VehicleBrandId String? @db.VarChar(36)
+  Model String
+  Generation String
+  Color String
+  ChassisNumber String
+  EngineNumber String
+  EngineBrand String
+  FuelTypeId String? @db.VarChar(36)
+  FuelType FuelType? @relation(fields: [FuelTypeId], references: [FuelTypeId])
+  TankSize Int
+  FuelConsumption Int
+  CylinderCount Int
+  Cylinder Int
+  VehicleSize String
+  CargoSize String
+  GasSerialNumber String
+  VehicleWeight Int
+  CargoWeight Int
+  WheelCount Int
+  SeatCount Int
+  RegistrationDate DateTime?
+  StartDate DateTime?
+  Age String
+  Ownership String
+  LineNotifyToken String?
+  VehicleOwner VehicleOwner? @relation(fields: [VehicleOwnerId], references: [VehicleOwnerId])
+  VehicleOwnerId String? @db.VarChar(36)
+  VehicleDepartment VehicleDepartment? @relation(fields: [VehicleDepartmentId], references: [VehicleDepartmentId])
+  VehicleDepartmentId String? @db.VarChar(36)
+  VehicleDriver VehicleDriver? @relation(fields: [VehicleDriverId], references: [VehicleDriverId])
+  VehicleDriverId String? @db.VarChar(36)
+  VehicleStatus VehicleStatus? @relation(fields: [VehicleStatusId], references: [VehicleStatusId])
+  VehicleStatusId String? @db.VarChar(36)
+  InstallmentPeriods Int?
+  InstallmentAmount Decimal? @db.Decimal(10,2)
+  Note String?
+  Img String?
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  Tax Tax[]
+  CompulsoryMotorInsuranceVehicle CompulsoryMotorInsuranceVehicle[]
+  InsurancePolicyVehicle InsurancePolicyVehicle[]
+  AttachFileVehicle AttachFileVehicle[]
+  CarTires CarTires[]
+  AccidentVehicle AccidentVehicle[]
+  RepairVehicle RepairVehicle[]
+  GasolineCost GasolineCost[]
+  DrainTheOilVehicle DrainTheOilVehicle[]
+  InstallmentsVehicle InstallmentsVehicle[]
+  ImageVehicle ImageVehicle[]
+  IncomeVehicle IncomeVehicle[]
+  @@index([TenantId])
+  @@index([VehicleId])
+}
+
+model FuelType {
+  TenantId String @db.VarChar(36)
+  FuelTypeId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Name String
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  Vehicle Vehicle[]
+  @@index([TenantId])
+  @@index([FuelTypeId])
+}
+
+model VehicleType {
+  TenantId String @db.VarChar(36)
+  VehicleTypeId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Name String
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  Vehicle Vehicle[]
+  @@index([TenantId])
+  @@index([VehicleTypeId])
+}
+
+model VehicleBrand {
+  TenantId String @db.VarChar(36)
+  VehicleBrandId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Name String
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  Vehicle Vehicle[]
+  @@index([TenantId])
+  @@index([VehicleBrandId])
+}
+
+model VehicleOwner {
+  TenantId String @db.VarChar(36)
+  VehicleOwnerId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Name String
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  Vehicle Vehicle[]
+  @@index([TenantId])
+  @@index([VehicleOwnerId])
+}
+
+model VehicleDepartment {
+  TenantId String @db.VarChar(36)
+  VehicleDepartmentId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Name String
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  Vehicle Vehicle[]
+  @@index([TenantId])
+  @@index([VehicleDepartmentId])
+}
+
+model VehicleDriver {
+  TenantId String @db.VarChar(36)
+  VehicleDriverId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Name String
+  MobileNo String? @db.VarChar(50)
+  LicenseNo String? @db.VarChar(50)
+  ImageUrl String?
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  LineUserId String?
+  Vehicle Vehicle[]
+  IncomeVehicle IncomeVehicle[]
+  DriverJobs DriverJob[]
+  @@index([TenantId])
+  @@index([VehicleDriverId])
+}
+
+model DriverJob {
+  DriverJobId String @id @default(uuid()) @db.VarChar(36)
+  TenantId String @db.VarChar(36)
+  JobNo Int?
+  VehicleDriverId String? @db.VarChar(36)
+  VehicleDriver VehicleDriver? @relation(fields: [VehicleDriverId], references: [VehicleDriverId])
+  VehicleId String? @db.VarChar(36)
+  VehicleNo String?
+  Origin String
+  Destination String
+  ScheduledAt DateTime?
+  Note String?
+  Status String @db.VarChar(15) @default("pending")
+  RespondedAt DateTime?
+  CreatedByUsername String?
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now()) @updatedAt
+  @@index([TenantId])
+  @@index([VehicleDriverId])
+  @@index([Status])
+  @@index([TenantId, JobNo])
+}
+
+model LineCommand {
+  LineCommandId String @id @default(uuid()) @db.VarChar(36)
+  TenantId String @db.VarChar(36)
+  LineUserId String
+  Role String @db.VarChar(15)
+  RawText String
+  ParsedAction String?
+  ResultStatus String @db.VarChar(15)
+  CreatedAt DateTime @default(now())
+  @@index([TenantId])
+  @@index([LineUserId])
+}
+
+model VehicleStatus {
+  TenantId String @db.VarChar(36)
+  VehicleStatusId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Name String
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  Vehicle Vehicle[]
+  @@index([TenantId])
+  @@index([VehicleStatusId])
+}
+
+model Tax {
+  TaxId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Year Int
+  EndDate DateTime
+  TotalPremium Decimal @db.Decimal(10,2)
+  InsuranceCompany String
+  BrokerName String
+  File String?
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  VehicleId String @db.VarChar(36)
+  Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
+  @@index([VehicleId])
+  @@index([TaxId])
+}
+
+model CompulsoryMotorInsuranceVehicle {
+  CompulsoryMotorInsuranceVehicleId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Year Int
+  EndDate DateTime
+  TotalPremium Decimal @db.Decimal(10,2)
+  InsuranceCompany String
+  BrokerName String
+  File String?
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  VehicleId String @db.VarChar(36)
+  Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
+  @@index([VehicleId])
+  @@index([CompulsoryMotorInsuranceVehicleId])
+}
+
+model InsurancePolicyVehicle {
+  InsurancePolicyVehicleId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Year Int
+  Type String
+  InsuranceCompany String
+  BrokerName String
+  StartDate DateTime
+  EndDate DateTime
+  TotalPremium Decimal @db.Decimal(10,2)
+  PolicyFile String?
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  VehicleId String @db.VarChar(36)
+  Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
+  @@index([VehicleId])
+  @@index([InsurancePolicyVehicleId])
+}
+
+model AttachFileVehicle {
+  AttachFileVehicleId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  FileName String
+  Description String
+  Url String
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  VehicleId String @db.VarChar(36)
+  Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
+  @@index([VehicleId])
+  @@index([AttachFileVehicleId])
+}
+
+model CarTires {
+  CarTiresId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  ChangeDate DateTime
+  Position String
+  Brand String
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  VehicleId String @db.VarChar(36)
+  Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
+  @@index([VehicleId])
+  @@index([CarTiresId])
+}
+
+model AccidentVehicle {
+  AccidentVehicleId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Date DateTime
+  Time String
+  Party String
+  LicensePlate String
+  DriverName String
+  Opponent String
+  Files String?
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  VehicleId String @db.VarChar(36)
+  Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
+  @@index([VehicleId])
+  @@index([AccidentVehicleId])
+}
+
+model RepairVehicle {
+  RepairVehicleId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  RepairDate DateTime
+  LicensePlate String
+  RepairShop String
+  Description String?
+  ReceiveDate DateTime
+  InsurancePay Decimal @db.Decimal(10,2)
+  CompanyPay Decimal @db.Decimal(10,2)
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  VehicleId String @db.VarChar(36)
+  Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
+  @@index([VehicleId])
+  @@index([RepairVehicleId])
+}
+
+model GasolineCost {
+  GasolineCostId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Item String
+  TaxInvoiceNumber String? @db.VarChar(100)
+  Liters Int
+  Amount Decimal @db.Decimal(10,2)
+  OdometerStart Int
+  OdometerEnd Int
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  DateTime DateTime
+  VehicleId String @db.VarChar(36)
+  Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
+  @@index([VehicleId])
+  @@index([GasolineCostId])
+}
+
+model DrainTheOilVehicle {
+  DrainTheOilVehicleId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Date DateTime
+  DueDate DateTime?
+  Odometer Int @default(0)
+  TextAlert String
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  VehicleId String @db.VarChar(36)
+  Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
+  @@index([VehicleId])
+  @@index([DrainTheOilVehicleId])
+}
+
+model InstallmentsVehicle {
+  InstallmentsVehicleId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  InstallmentNumber Int
+  DueDate DateTime
+  Amount Decimal @db.Decimal(10,2)
+  DatePay DateTime?
+  PaymentEvidence String?
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  VehicleId String @db.VarChar(36)
+  Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
+  @@index([VehicleId])
+  @@index([InstallmentsVehicleId])
+}
+
+model ImageVehicle {
+  ImageVehicleId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Url String
+  Title String
+  Description String
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  VehicleId String @db.VarChar(36)
+  Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
+  @@index([VehicleId])
+  @@index([ImageVehicleId])
+}
+
+model LineWebhook {
+  LineWebhookId String @id @default(uuid()) @db.VarChar(36)
+  TenantId String @db.VarChar(36)
+  Body String
+  CreatedAt DateTime @default(now())
+  @@index([LineWebhookId])
+  @@index([TenantId])
+}
+
+model IncomeVehicle {
+  IncomeVehicleId String @id @default(uuid()) @db.VarChar(36)
+  CustomerName String?
+  Description String
+  Status String @db.VarChar(15)
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  VehicleId String? @db.VarChar(36)
+  Vehicle Vehicle? @relation(fields: [VehicleId], references: [VehicleId])
+  TenantId String? @db.VarChar(36)
+  SourceLabel String?
+  ReceiveDate DateTime?
+  DateTime DateTime @default(now())
+  Time String
+  WorkOrderNumber String @db.VarChar(50)
+  InvoiceNumber String @db.VarChar(50)
+  AmountReceive Decimal @db.Decimal(10,2) @default(0)
+  VehicleDriver VehicleDriver? @relation(fields: [VehicleDriverId], references: [VehicleDriverId])
+  VehicleDriverId String? @db.VarChar(36)
+  PaymentStatus PaymentStatus? @relation(fields: [PaymentStatusId], references: [PaymentStatusId])
+  PaymentStatusId String? @db.VarChar(36)
+  @@index([VehicleId])
+  @@index([IncomeVehicleId])
+  @@index([TenantId])
+}
+
+model PaymentStatus {
+  TenantId String @db.VarChar(36)
+  PaymentStatusId String @id @default(uuid()) @db.VarChar(36)
+  Status String @db.VarChar(15)
+  Name String
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  IncomeVehicle IncomeVehicle[]
+  @@index([TenantId])
+  @@index([PaymentStatusId])
+}
+
+model ImportLog {
+  ImportLogId String @id @default(uuid()) @db.VarChar(36)
+  TenantId String @db.VarChar(36)
+  CreatedAt DateTime @default(now())
+  CreatedByUsername String?
+  FileName String?
+  FileRows Int @default(0)
+  FileSum Decimal @db.Decimal(16,2) @default(0)
+  CreatedRows Int @default(0)
+  CreatedSum Decimal @db.Decimal(16,2) @default(0)
+  DupRows Int @default(0)
+  DupSum Decimal @db.Decimal(16,2) @default(0)
+  ExistRows Int @default(0)
+  ExistSum Decimal @db.Decimal(16,2) @default(0)
+  @@index([TenantId])
+}
+
+// ======================================================================
+// == FUEL BILL CHECKER (from โปรแกรมนำมัน) =============================
+// ======================================================================
+
+model FuelBill {
+  id Int @id @default(autoincrement())
+  lineUserId String
+  employeeName String?
+  imageUrl String?
+  imageHash String?
+  receiptNo String?
+  station String?
+  billDate String? // YYYY-MM-DD as read from the receipt
+  billTime String? // HH:MM 24h
+  fuelType String?
+  liters Decimal? @db.Decimal(16,2)
+  pricePerLiter Decimal? @db.Decimal(16,2)
+  total Decimal? @db.Decimal(16,2)
+  plate String?
+  status String @default("ok") // ok | suspect | extract_failed
+  suspectReasons String?
+  createdAt DateTime @default(now())
+  @@index([lineUserId])
+  @@index([imageHash])
+  @@index([receiptNo])
+}
+
+// Generic key/value app config (fuel line_admin_id, feature toggles, etc.)
+model AppSetting {
+  key String @id
+  value String?
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+// ======================================================================
+// == DEBT / AR (from dhevadebt) ========================================
+// ======================================================================
+
+model DebtVersion {
+  id String @id @default(cuid())
+  fileName String
+  uploadedAt DateTime @default(now())
+  rowCount Int @default(0)
+  totalAmount Decimal @db.Decimal(16,2) @default(0)
+  isCurrent Boolean @default(false)
+  records DebtRecord[]
+  @@index([isCurrent])
+}
+
+model DebtRecord {
+  id String @id @default(cuid())
+  versionId String
+  version DebtVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  docNo String
+  docType String
+  date String? // ISO YYYY-MM-DD (kept as string to match the source module)
+  customer String
+  project String
+  taxId String
+  dueDate String? // ISO YYYY-MM-DD
+  branch String
+  value Decimal @db.Decimal(16,2) @default(0)
+  vat Decimal @db.Decimal(16,2) @default(0)
+  total Decimal @db.Decimal(16,2) @default(0)
+  depositRef String
+  status String // Thai status union: รอวางบิล | วางบิลแล้ว | เปิดบิลแล้ว | ชำระแล้ว | ยกเลิก
+  salesperson String
+  @@index([versionId])
+  @@index([docNo])
+}

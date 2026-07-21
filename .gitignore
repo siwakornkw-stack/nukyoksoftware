@@ -1,0 +1,30 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production build
+/build
+/dist
+
+# local uploads (served from disk on VPS)
+/var
+/uploads
+
+# env
+.env
+.env*.local
+.env.local
+
+# typescript
+*.tsbuildinfo
+
+# misc
+*.log
+.DS_Store
+npm-debug.log*
+
+# prisma
+/prisma/*.db
