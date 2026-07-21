@@ -1,3 +1,6 @@
+// Signing secret and cookie handling: server-side only. The import fails the
+// build if a client component ever reaches this module.
+import "server-only";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
