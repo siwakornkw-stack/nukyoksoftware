@@ -4,7 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const groups: { title: string | null; items: { href: string; label: string; icon: string }[] }[] = [
-  { title: null, items: [{ href: "/", label: "ภาพรวม", icon: "🏠" }] },
+  {
+    title: null,
+    items: [
+      { href: "/", label: "ภาพรวม", icon: "🏠" },
+      { href: "/help", label: "วิธีใช้งาน", icon: "📖" },
+    ],
+  },
   {
     title: "กองรถ & การเงิน",
     items: [
