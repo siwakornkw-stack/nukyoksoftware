@@ -5,7 +5,10 @@
 // Alternative without this process: use the system crontab (see DEPLOY.md).
 import cron from "node-cron";
 
-const BASE = process.env.APP_BASE_URL || "http://127.0.0.1:3000";
+// The worker calls the app on this host, so it wants the internal origin.
+// APP_BASE_URL is the *public* origin (used for links in LINE messages), so
+// prefer CRON_BASE_URL when the two differ.
+const BASE = process.env.CRON_BASE_URL || process.env.APP_BASE_URL || "http://127.0.0.1:3000";
 const SECRET = process.env.CRON_SECRET || "";
 const TZ = "Asia/Bangkok";
 
