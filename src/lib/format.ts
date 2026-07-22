@@ -1,8 +1,14 @@
+// Summary figures are whole baht and read better without ".00", but per-item
+// amounts (fuel, repairs, premiums) carry satang and rounding those to the
+// nearest baht made a row disagree with the receipt it was typed from. Show
+// the satang only when there are any.
 export function baht(n: number): string {
+  const digits = Number.isInteger(n) ? 0 : 2;
   return n.toLocaleString("th-TH", {
     style: "currency",
     currency: "THB",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
   });
 }
 
