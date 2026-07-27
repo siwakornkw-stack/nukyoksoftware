@@ -1,0 +1,3 @@
+{
+  "/api/cron/fuel-monthly/route": "app/api/cron/fuel-monthly/route.js"
+}

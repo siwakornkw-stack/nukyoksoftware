@@ -1,0 +1,3 @@
+{
+  "/api/fleet/master/[type]/route": "app/api/fleet/master/[type]/route.js"
+}
