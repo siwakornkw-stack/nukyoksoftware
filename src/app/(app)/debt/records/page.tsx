@@ -13,6 +13,7 @@ export default function RecordsPage() {
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [page, setPage] = useState(1);
+  const [err, setErr] = useState("");
 
   useEffect(() => {
     fetch("/api/debt/records")
@@ -38,12 +39,23 @@ export default function RecordsPage() {
   const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   async function changeStatus(docNo: string, status: DebtStatus) {
+    const previous = records.find((r) => r.docNo === docNo)?.status;
+    setErr("");
     setRecords((prev) => prev.map((r) => (r.docNo === docNo ? { ...r, status } : r)));
-    await fetch("/api/debt/status", {
+    const res = await fetch("/api/debt/status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ docNo, status }),
     });
+    if (!res.ok) {
+      // The row was updated ahead of the server; put it back so the screen does
+      // not claim a status the database never accepted.
+      if (previous) {
+        setRecords((prev) => prev.map((r) => (r.docNo === docNo ? { ...r, status: previous } : r)));
+      }
+      const d = await res.json().catch(() => ({}));
+      setErr(d.error || "เปลี่ยนสถานะไม่สำเร็จ");
+    }
   }
 
   return (
@@ -80,6 +92,7 @@ export default function RecordsPage() {
       </Card>
 
       <Card>
+        {err && <div className="mb-3 text-sm text-rose-400">{err}</div>}
         {loading ? (
           <div className="text-slate-400 py-8 text-center">กำลังโหลด...</div>
         ) : (

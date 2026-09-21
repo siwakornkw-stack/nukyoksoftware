@@ -10,38 +10,75 @@ interface Opt {
 interface Options {
   types: Opt[];
   brands: Opt[];
+  owners: Opt[];
+  departments: Opt[];
   drivers: Opt[];
+  statuses: Opt[];
   fuelTypes: Opt[];
 }
 
-export function VehicleForm({ options }: { options: Options }) {
+// Same shape the form posts, so an edit page can hand back what it loaded.
+export interface VehicleInit {
+  platePrefix: string;
+  plateSuffix: string;
+  plateProvince: string;
+  vehicleTypeId: string;
+  vehicleBrandId: string;
+  model: string;
+  color: string;
+  vehicleOwnerId: string;
+  vehicleDepartmentId: string;
+  vehicleDriverId: string;
+  vehicleStatusId: string;
+  fuelTypeId: string;
+  installmentPeriods: string;
+  installmentAmount: string;
+  note: string;
+}
+
+const EMPTY: VehicleInit = {
+  platePrefix: "",
+  plateSuffix: "",
+  plateProvince: "",
+  vehicleTypeId: "",
+  vehicleBrandId: "",
+  model: "",
+  color: "",
+  vehicleOwnerId: "",
+  vehicleDepartmentId: "",
+  vehicleDriverId: "",
+  vehicleStatusId: "",
+  fuelTypeId: "",
+  installmentPeriods: "",
+  installmentAmount: "",
+  note: "",
+};
+
+// One form for both "เพิ่มรถ" and "แก้ไขรถ": passing vehicleId switches it to
+// PATCH so the edit screen does not need a second copy of every field.
+export function VehicleForm({
+  options,
+  vehicleId,
+  initial,
+}: {
+  options: Options;
+  vehicleId?: string;
+  initial?: VehicleInit;
+}) {
   const router = useRouter();
-  const [form, setForm] = useState({
-    platePrefix: "",
-    plateSuffix: "",
-    plateProvince: "",
-    vehicleTypeId: "",
-    vehicleBrandId: "",
-    model: "",
-    color: "",
-    vehicleDriverId: "",
-    fuelTypeId: "",
-    installmentPeriods: "",
-    installmentAmount: "",
-    note: "",
-  });
+  const [form, setForm] = useState<VehicleInit>(initial ?? EMPTY);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+  const set = (k: keyof VehicleInit) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError("");
-    const res = await fetch("/api/fleet/vehicles", {
-      method: "POST",
+    const res = await fetch(vehicleId ? `/api/fleet/vehicles/${vehicleId}` : "/api/fleet/vehicles", {
+      method: vehicleId ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
     });
@@ -49,11 +86,24 @@ export function VehicleForm({ options }: { options: Options }) {
     if (res.ok) {
       const d = await res.json();
       router.push(`/fleet/vehicles/${d.vehicle.VehicleId}`);
+      router.refresh();
     } else {
       const d = await res.json().catch(() => ({}));
       setError(d.error || "บันทึกไม่สำเร็จ");
     }
   }
+
+  const select = (label: string, key: keyof VehicleInit, opts: Opt[]) => (
+    <label className="text-sm">
+      <span className="block text-slate-400 mb-1">{label}</span>
+      <select className="field" value={form[key]} onChange={set(key)}>
+        <option value="">-</option>
+        {opts.map((o) => (
+          <option key={o.id} value={o.id}>{o.name}</option>
+        ))}
+      </select>
+    </label>
+  );
 
   return (
     <form onSubmit={submit} className="glass rounded-2xl p-5 grid gap-4 sm:grid-cols-2">
@@ -72,24 +122,8 @@ export function VehicleForm({ options }: { options: Options }) {
         </label>
       </div>
 
-      <label className="text-sm">
-        <span className="block text-slate-400 mb-1">ประเภท</span>
-        <select className="field" value={form.vehicleTypeId} onChange={set("vehicleTypeId")}>
-          <option value="">-</option>
-          {options.types.map((o) => (
-            <option key={o.id} value={o.id}>{o.name}</option>
-          ))}
-        </select>
-      </label>
-      <label className="text-sm">
-        <span className="block text-slate-400 mb-1">ยี่ห้อ</span>
-        <select className="field" value={form.vehicleBrandId} onChange={set("vehicleBrandId")}>
-          <option value="">-</option>
-          {options.brands.map((o) => (
-            <option key={o.id} value={o.id}>{o.name}</option>
-          ))}
-        </select>
-      </label>
+      {select("ประเภท", "vehicleTypeId", options.types)}
+      {select("ยี่ห้อ", "vehicleBrandId", options.brands)}
 
       <label className="text-sm">
         <span className="block text-slate-400 mb-1">รุ่น</span>
@@ -100,24 +134,11 @@ export function VehicleForm({ options }: { options: Options }) {
         <input className="field" value={form.color} onChange={set("color")} />
       </label>
 
-      <label className="text-sm">
-        <span className="block text-slate-400 mb-1">คนขับ</span>
-        <select className="field" value={form.vehicleDriverId} onChange={set("vehicleDriverId")}>
-          <option value="">-</option>
-          {options.drivers.map((o) => (
-            <option key={o.id} value={o.id}>{o.name}</option>
-          ))}
-        </select>
-      </label>
-      <label className="text-sm">
-        <span className="block text-slate-400 mb-1">ชนิดน้ำมัน</span>
-        <select className="field" value={form.fuelTypeId} onChange={set("fuelTypeId")}>
-          <option value="">-</option>
-          {options.fuelTypes.map((o) => (
-            <option key={o.id} value={o.id}>{o.name}</option>
-          ))}
-        </select>
-      </label>
+      {select("เจ้าของ", "vehicleOwnerId", options.owners)}
+      {select("แผนก", "vehicleDepartmentId", options.departments)}
+      {select("คนขับ", "vehicleDriverId", options.drivers)}
+      {select("สถานะรถ", "vehicleStatusId", options.statuses)}
+      {select("ชนิดน้ำมัน", "fuelTypeId", options.fuelTypes)}
 
       <label className="text-sm">
         <span className="block text-slate-400 mb-1">จำนวนงวด</span>

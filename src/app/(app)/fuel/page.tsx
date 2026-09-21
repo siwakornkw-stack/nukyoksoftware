@@ -52,6 +52,8 @@ export default function FuelDashboard() {
   const [employees, setEmployees] = useState<string[]>([]);
   const [monthly, setMonthly] = useState<MonthlyRow[]>([]);
   const [adminId, setAdminId] = useState("");
+  const [adminMsg, setAdminMsg] = useState("");
+  const [savingAdmin, setSavingAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [from, setFrom] = useState("");
@@ -121,11 +123,20 @@ export default function FuelDashboard() {
   }, [monthly]);
 
   async function saveAdmin() {
-    await fetch("/api/fuel/settings", {
+    setAdminMsg("");
+    setSavingAdmin(true);
+    const res = await fetch("/api/fuel/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ line_admin_id: adminId }),
     });
+    setSavingAdmin(false);
+    if (res.ok) {
+      setAdminMsg("บันทึกแล้ว");
+    } else {
+      const d = await res.json().catch(() => ({}));
+      setAdminMsg(d.error || "บันทึกไม่สำเร็จ");
+    }
   }
 
   return (
@@ -256,11 +267,23 @@ export default function FuelDashboard() {
             className="field max-w-md"
             placeholder="LINE userId ผู้ดูแล (คั่นหลายคนด้วยเว้นวรรค/คอมมา)"
             value={adminId}
-            onChange={(e) => setAdminId(e.target.value)}
+            onChange={(e) => {
+              setAdminId(e.target.value);
+              setAdminMsg("");
+            }}
           />
-          <button onClick={saveAdmin} className="rounded-lg px-3 py-2 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium">
-            บันทึก
+          <button
+            onClick={saveAdmin}
+            disabled={savingAdmin}
+            className="rounded-lg px-3 py-2 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium disabled:opacity-50"
+          >
+            {savingAdmin ? "กำลังบันทึก..." : "บันทึก"}
           </button>
+          {adminMsg && (
+            <span className={`text-sm ${adminMsg === "บันทึกแล้ว" ? "text-emerald-300" : "text-rose-400"}`}>
+              {adminMsg}
+            </span>
+          )}
         </div>
         <div className="text-xs text-slate-500 mt-2">
           พนักงานพิมพ์ &quot;id&quot; ในแชท LINE เพื่อดู userId ของตัวเอง

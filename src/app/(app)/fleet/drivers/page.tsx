@@ -33,6 +33,8 @@ export default function DriversPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [newDriver, setNewDriver] = useState({ name: "", mobileNo: "", licenseNo: "", lineUserId: "" });
   const [newJob, setNewJob] = useState({ origin: "", destination: "", scheduledAt: "", vehicleDriverId: "", note: "" });
+  const [driverErr, setDriverErr] = useState("");
+  const [jobErr, setJobErr] = useState("");
 
   const load = useCallback(() => {
     fetch("/api/fleet/drivers")
@@ -45,8 +47,16 @@ export default function DriversPage() {
 
   useEffect(load, [load]);
 
+  // The API answers failures with { error }. Without surfacing it the button
+  // just does nothing and the user has no idea why.
+  async function errorOf(res: Response, fallback: string): Promise<string> {
+    const d = await res.json().catch(() => ({}));
+    return d.error || fallback;
+  }
+
   async function addDriver(e: React.FormEvent) {
     e.preventDefault();
+    setDriverErr("");
     const res = await fetch("/api/fleet/drivers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -55,11 +65,14 @@ export default function DriversPage() {
     if (res.ok) {
       setNewDriver({ name: "", mobileNo: "", licenseNo: "", lineUserId: "" });
       load();
+    } else {
+      setDriverErr(await errorOf(res, "เพิ่มคนขับไม่สำเร็จ"));
     }
   }
 
   async function addJob(e: React.FormEvent) {
     e.preventDefault();
+    setJobErr("");
     const res = await fetch("/api/fleet/driver-jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -68,15 +81,19 @@ export default function DriversPage() {
     if (res.ok) {
       setNewJob({ origin: "", destination: "", scheduledAt: "", vehicleDriverId: "", note: "" });
       load();
+    } else {
+      setJobErr(await errorOf(res, "สร้างงานไม่สำเร็จ"));
     }
   }
 
   async function jobAction(action: string, jobId: string, vehicleDriverId?: string) {
-    await fetch("/api/fleet/driver-jobs", {
+    setJobErr("");
+    const res = await fetch("/api/fleet/driver-jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, jobId, vehicleDriverId }),
     });
+    if (!res.ok) setJobErr(await errorOf(res, "ทำรายการไม่สำเร็จ"));
     load();
   }
 
@@ -95,6 +112,7 @@ export default function DriversPage() {
             <button className="col-span-2 rounded-lg px-3 py-2 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium">
               เพิ่ม
             </button>
+            {driverErr && <div className="col-span-2 text-sm text-rose-400">{driverErr}</div>}
           </form>
 
           <div className="mt-4 max-h-64 overflow-y-auto">
@@ -124,9 +142,16 @@ export default function DriversPage() {
                 ))}
               </select>
             </div>
+            <input
+              className="field"
+              placeholder="หมายเหตุ"
+              value={newJob.note}
+              onChange={(e) => setNewJob({ ...newJob, note: e.target.value })}
+            />
             <button className="rounded-lg px-3 py-2 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium">
               สร้างงาน
             </button>
+            {jobErr && <div className="text-sm text-rose-400">{jobErr}</div>}
           </form>
         </Card>
       </div>

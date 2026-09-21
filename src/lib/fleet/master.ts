@@ -17,3 +17,17 @@ export async function getMasterOptions() {
     ]);
   return { types, brands, owners, departments, drivers, statuses, fuelTypes, paymentStatuses };
 }
+
+// The {id,name} lists VehicleForm renders, shared by the add and edit pages.
+export async function getVehicleFormOptions() {
+  const m = await getMasterOptions();
+  return {
+    types: m.types.map((x) => ({ id: x.VehicleTypeId, name: x.Name })),
+    brands: m.brands.map((x) => ({ id: x.VehicleBrandId, name: x.Name })),
+    owners: m.owners.map((x) => ({ id: x.VehicleOwnerId, name: x.Name })),
+    departments: m.departments.map((x) => ({ id: x.VehicleDepartmentId, name: x.Name })),
+    drivers: m.drivers.map((x) => ({ id: x.VehicleDriverId, name: x.Name })),
+    statuses: m.statuses.map((x) => ({ id: x.VehicleStatusId, name: x.Name })),
+    fuelTypes: m.fuelTypes.map((x) => ({ id: x.FuelTypeId, name: x.Name })),
+  };
+}

@@ -38,6 +38,7 @@ export async function GET(req: Request) {
       dueDate: i.DueDate.toISOString().slice(0, 10),
       amount: dec(i.Amount),
       datePay: i.DatePay ? i.DatePay.toISOString().slice(0, 10) : null,
+      evidence: i.PaymentEvidence,
       overdueDays,
     };
   });

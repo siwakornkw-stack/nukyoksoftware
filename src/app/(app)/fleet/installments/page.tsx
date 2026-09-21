@@ -13,6 +13,7 @@ interface Row {
   dueDate: string;
   amount: number;
   datePay: string | null;
+  evidence: string | null;
   overdueDays: number;
 }
 
@@ -31,6 +32,7 @@ function InstallmentsInner() {
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState("");
   const [genMsg, setGenMsg] = useState("");
+  const [payErr, setPayErr] = useState("");
   const [evidence, setEvidence] = useState<Record<string, File>>({});
   const [paying, setPaying] = useState<string | null>(null);
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -49,18 +51,25 @@ function InstallmentsInner() {
 
   async function markPaid(id: string) {
     setPaying(id);
+    setPayErr("");
     const fd = new FormData();
     fd.append("action", "pay");
     fd.append("id", id);
     const f = evidence[id];
     if (f) fd.append("file", f);
-    await fetch("/api/fleet/installments", { method: "POST", body: fd });
+    const res = await fetch("/api/fleet/installments", { method: "POST", body: fd });
+    setPaying(null);
+    if (!res.ok) {
+      // Keep the picked file so the user can retry without re-attaching it.
+      const d = await res.json().catch(() => ({}));
+      setPayErr(d.error || "บันทึกชำระไม่สำเร็จ");
+      return;
+    }
     setEvidence((e) => {
       const next = { ...e };
       delete next[id];
       return next;
     });
-    setPaying(null);
     load();
   }
 
@@ -116,6 +125,7 @@ function InstallmentsInner() {
       </div>
 
       <Card>
+        {payErr && <div className="mb-3 text-sm text-rose-400">{payErr}</div>}
         {loading ? (
           <div className="py-8 text-center text-slate-400">กำลังโหลด...</div>
         ) : (
@@ -182,6 +192,18 @@ function InstallmentsInner() {
                           >
                             {paying === r.id ? "กำลังบันทึก..." : "บันทึกชำระ"}
                           </button>
+                        </div>
+                      )}
+                      {r.datePay && r.evidence && (
+                        <div className="text-right">
+                          <a
+                            href={r.evidence}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-sky-300 hover:underline"
+                          >
+                            ดูหลักฐาน
+                          </a>
                         </div>
                       )}
                     </td>

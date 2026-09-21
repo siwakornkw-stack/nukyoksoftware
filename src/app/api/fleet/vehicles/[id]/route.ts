@@ -45,7 +45,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       Status: b.status ?? undefined,
       VehicleTypeId: b.vehicleTypeId === undefined ? undefined : b.vehicleTypeId || null,
       VehicleBrandId: b.vehicleBrandId === undefined ? undefined : b.vehicleBrandId || null,
+      VehicleOwnerId: b.vehicleOwnerId === undefined ? undefined : b.vehicleOwnerId || null,
+      VehicleDepartmentId:
+        b.vehicleDepartmentId === undefined ? undefined : b.vehicleDepartmentId || null,
       VehicleDriverId: b.vehicleDriverId === undefined ? undefined : b.vehicleDriverId || null,
+      VehicleStatusId: b.vehicleStatusId === undefined ? undefined : b.vehicleStatusId || null,
       FuelTypeId: b.fuelTypeId === undefined ? undefined : b.fuelTypeId || null,
       InstallmentPeriods: b.installmentPeriods === undefined ? undefined : Number(b.installmentPeriods) || null,
       InstallmentAmount: b.installmentAmount === undefined ? undefined : Number(b.installmentAmount) || null,

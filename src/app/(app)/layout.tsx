@@ -13,7 +13,8 @@ export default async function AppLayout({
   return (
     <div className="flex min-h-screen">
       <Sidebar userName={session?.name || session?.username || "ผู้ใช้"} role={session?.role} />
-      <main className="flex-1 min-w-0 p-4 md:p-6">{children}</main>
+      {/* pt-16 clears the fixed mobile header the sidebar renders below md. */}
+      <main className="flex-1 min-w-0 p-4 pt-16 md:p-6">{children}</main>
     </div>
   );
 }

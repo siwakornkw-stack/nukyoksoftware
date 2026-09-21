@@ -5,6 +5,7 @@ import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { PageHeader, Card, StatCard } from "@/components/ui";
 import { baht, thDate, thDateTime } from "@/lib/format";
 import { dec } from "@/lib/fleet/queries";
+import { StatusButton } from "./StatusButton";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,10 @@ export default async function VehicleDetail({ params }: { params: Promise<{ id: 
     include: {
       VehicleBrand: true,
       VehicleType: true,
+      VehicleOwner: true,
+      VehicleDepartment: true,
       VehicleDriver: true,
+      VehicleStatus: true,
       FuelType: true,
       InstallmentsVehicle: { orderBy: { InstallmentNumber: "asc" } },
       IncomeVehicle: { orderBy: { DateTime: "desc" }, take: 20 },
@@ -34,7 +38,10 @@ export default async function VehicleDetail({ params }: { params: Promise<{ id: 
     ["ยี่ห้อ", v.VehicleBrand?.Name ?? "-"],
     ["รุ่น", v.Model || "-"],
     ["สี", v.Color || "-"],
+    ["เจ้าของ", v.VehicleOwner?.Name ?? "-"],
+    ["แผนก", v.VehicleDepartment?.Name ?? "-"],
     ["คนขับ", v.VehicleDriver?.Name ?? "-"],
+    ["สถานะรถ", v.VehicleStatus?.Name ?? "-"],
     ["ชนิดน้ำมัน", v.FuelType?.Name ?? "-"],
     ["เลขตัวถัง", v.ChassisNumber || "-"],
     ["เลขเครื่อง", v.EngineNumber || "-"],
@@ -46,16 +53,26 @@ export default async function VehicleDetail({ params }: { params: Promise<{ id: 
         title={`${v.LicensePlatePrefix} ${v.LicensePlateSuffix}`}
         subtitle={v.LicensePlateProvince}
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/fleet/vehicles/${v.VehicleId}/edit`} className="rounded-lg px-3 py-1.5 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium">
+              แก้ไข
+            </Link>
             <Link href={`/fleet/vehicles/${v.VehicleId}/records`} className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">
               ประวัติ/เอกสาร
             </Link>
             <Link href={`/fleet/installments?vehicle=${v.VehicleId}`} className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">
               จัดการค่างวด
             </Link>
+            <StatusButton vehicleId={v.VehicleId} active={v.Status === "active"} />
           </div>
         }
       />
+
+      {v.Status !== "active" && (
+        <Card className="mb-4 border-amber-500/30">
+          <div className="text-sm text-amber-300">รถคันนี้ถูกปิดการใช้งาน ข้อมูลและประวัติยังอยู่ครบ</div>
+        </Card>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-3 mb-4">
         <StatCard label="ค่างวดคงเหลือ" value={baht(unpaidAmt)} sub={`${unpaid.length}/${inst.length} งวด`} accent="amber" />

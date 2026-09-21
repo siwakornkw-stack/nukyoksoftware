@@ -5,6 +5,16 @@ import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
+// Updates address a job by its id alone, so without this the tenant scope that
+// guards every other query here would be missing on assign/cancel.
+async function ownsJob(jobId: string): Promise<boolean> {
+  const job = await prisma.driverJob.findUnique({
+    where: { DriverJobId: jobId },
+    select: { TenantId: true },
+  });
+  return job?.TenantId === DEFAULT_TENANT_ID;
+}
+
 export async function GET() {
   if (!(await getSession())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const jobs = await prisma.driverJob.findMany({
@@ -47,18 +57,29 @@ export async function POST(req: Request) {
   }
 
   if (b.action === "assign") {
-    if (!b.jobId || !b.vehicleDriverId) {
-      return NextResponse.json({ error: "missing jobId/driver" }, { status: 400 });
+    if (!b.jobId) return NextResponse.json({ error: "ไม่พบงานที่จะมอบหมาย" }, { status: 400 });
+    if (!(await ownsJob(b.jobId))) {
+      return NextResponse.json({ error: "ไม่พบงานนี้" }, { status: 404 });
     }
+    // An empty driver means "take the assignment back" — the picker offers that
+    // as its first option, so it has to be a valid value, not a 400.
+    const driverId = b.vehicleDriverId || null;
     await prisma.driverJob.update({
       where: { DriverJobId: b.jobId },
-      data: { VehicleDriverId: b.vehicleDriverId, Status: "assigned", RespondedAt: new Date() },
+      data: {
+        VehicleDriverId: driverId,
+        Status: driverId ? "assigned" : "pending",
+        RespondedAt: driverId ? new Date() : null,
+      },
     });
     return NextResponse.json({ ok: true });
   }
 
   if (b.action === "cancel") {
-    if (!b.jobId) return NextResponse.json({ error: "missing jobId" }, { status: 400 });
+    if (!b.jobId) return NextResponse.json({ error: "ไม่พบงานที่จะยกเลิก" }, { status: 400 });
+    if (!(await ownsJob(b.jobId))) {
+      return NextResponse.json({ error: "ไม่พบงานนี้" }, { status: 404 });
+    }
     await prisma.driverJob.update({
       where: { DriverJobId: b.jobId },
       data: { Status: "cancelled" },

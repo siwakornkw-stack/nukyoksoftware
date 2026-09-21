@@ -33,15 +33,18 @@ export async function GET(req: Request, ctx: { params: Promise<{ type: string }>
 
   const { type } = await ctx.params;
   const def = getRecordType(type);
-  if (!def) return NextResponse.json({ error: "unknown record type" }, { status: 404 });
+  if (!def) return NextResponse.json({ error: "ไม่รู้จักประเภทรายการนี้" }, { status: 404 });
 
   const vehicleId = new URL(req.url).searchParams.get("vehicleId") || "";
   if (!(await ownsVehicle(vehicleId))) {
-    return NextResponse.json({ error: "vehicle not found" }, { status: 404 });
+    return NextResponse.json({ error: "ไม่พบรถคันนี้" }, { status: 404 });
   }
 
   const rows = await delegate(def).findMany({
-    where: { VehicleId: vehicleId },
+    where: {
+      VehicleId: vehicleId,
+      ...(def.tenanted ? { TenantId: DEFAULT_TENANT_ID } : {}),
+    },
     orderBy: { [def.orderBy]: "desc" },
   });
   return NextResponse.json({ rows: rows.map((r) => withNumericMoney(def, r)) });
@@ -53,7 +56,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ type: string }
 
   const { type } = await ctx.params;
   const def = getRecordType(type);
-  if (!def) return NextResponse.json({ error: "unknown record type" }, { status: 404 });
+  if (!def) return NextResponse.json({ error: "ไม่รู้จักประเภทรายการนี้" }, { status: 404 });
 
   // The add form posts multipart because record types can carry a file field.
   // Without this, anything else (a JSON client, say) makes formData() throw and
@@ -70,7 +73,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ type: string }
 
   const vehicleId = String(form.get("vehicleId") || "");
   if (!(await ownsVehicle(vehicleId))) {
-    return NextResponse.json({ error: "vehicle not found" }, { status: 404 });
+    return NextResponse.json({ error: "ไม่พบรถคันนี้" }, { status: 404 });
   }
 
   const data: Record<string, unknown> = {
@@ -78,10 +81,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ type: string }
     VehicleId: vehicleId,
     CreatedByUsername: session.username,
     UpdatedByUsername: session.username,
+    ...(def.tenanted ? { TenantId: DEFAULT_TENANT_ID } : {}),
+    ...(def.defaults ?? {}),
   };
 
   for (const f of def.fields) {
     const raw = form.get(f.name);
+
+    if (f.type === "select") {
+      const id = raw == null ? "" : String(raw).trim();
+      if (!id && !f.optional) {
+        return NextResponse.json({ error: `ต้องเลือก: ${f.label}` }, { status: 400 });
+      }
+      data[f.name] = id || null;
+      continue;
+    }
 
     if (f.type === "file") {
       if (raw instanceof File && raw.size > 0) {

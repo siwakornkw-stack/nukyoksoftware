@@ -7,13 +7,16 @@
 // This module is imported by a client component, so it must stay free of
 // server-only imports. The prisma lookup lives in ./record-delegates.
 
-export type FieldType = "text" | "number" | "date" | "money" | "file";
+export type FieldType = "text" | "number" | "date" | "money" | "file" | "select";
 
 export interface FieldSpec {
   name: string; // Prisma column name
   label: string; // Thai UI label
   type: FieldType;
   optional?: boolean;
+  // "select" only: which master-data list fills the dropdown. The column then
+  // holds that master row's id, and the client maps it back to a name.
+  master?: string;
 }
 
 export interface RecordTypeDef {
@@ -22,6 +25,11 @@ export interface RecordTypeDef {
   delegate: RecordDelegate; // prisma delegate name
   idField: string; // PascalCase primary key column
   orderBy: string; // column to sort listings by (desc)
+  // Set when the table carries its own TenantId instead of reaching the tenant
+  // through Vehicle. The API fills it in; every reader scopes by it.
+  tenanted?: boolean;
+  // Required columns with no sensible form field, written verbatim on create.
+  defaults?: Record<string, string>;
   fields: FieldSpec[];
 }
 
@@ -34,7 +42,8 @@ export type RecordDelegate =
   | "accidentVehicle"
   | "repairVehicle"
   | "gasolineCost"
-  | "drainTheOilVehicle";
+  | "drainTheOilVehicle"
+  | "incomeVehicle";
 
 export const RECORD_TYPES: RecordTypeDef[] = [
   {
@@ -155,6 +164,28 @@ export const RECORD_TYPES: RecordTypeDef[] = [
       { name: "DueDate", label: "ครบกำหนดครั้งถัดไป", type: "date", optional: true },
       { name: "Odometer", label: "เลขไมล์", type: "number" },
       { name: "TextAlert", label: "ข้อความแจ้งเตือน", type: "text" },
+    ],
+  },
+  {
+    key: "income",
+    label: "รายรับ",
+    delegate: "incomeVehicle",
+    idField: "IncomeVehicleId",
+    orderBy: "DateTime",
+    tenanted: true,
+    // Columns that are NOT NULL but may legitimately be left blank on the
+    // form. Written before the field loop, so anything typed still wins.
+    // (Time has no form field at all — the import leaves it blank too.)
+    defaults: { Time: "", WorkOrderNumber: "", InvoiceNumber: "" },
+    fields: [
+      { name: "DateTime", label: "วันที่", type: "date" },
+      { name: "Description", label: "รายละเอียด", type: "text" },
+      { name: "CustomerName", label: "ลูกค้า", type: "text", optional: true },
+      { name: "WorkOrderNumber", label: "เลขที่ใบสั่งงาน", type: "text", optional: true },
+      { name: "InvoiceNumber", label: "เลขที่ใบแจ้งหนี้", type: "text", optional: true },
+      { name: "AmountReceive", label: "รับเงิน", type: "money" },
+      { name: "PaymentStatusId", label: "สถานะการชำระ", type: "select", master: "payment-status", optional: true },
+      { name: "VehicleDriverId", label: "คนขับ", type: "select", master: "vehicle-driver", optional: true },
     ],
   },
 ];

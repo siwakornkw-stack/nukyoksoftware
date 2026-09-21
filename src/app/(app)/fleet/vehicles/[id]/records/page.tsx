@@ -5,11 +5,20 @@ import Link from "next/link";
 import { PageHeader, Card } from "@/components/ui";
 import { baht, thDate } from "@/lib/format";
 import { RECORD_TYPES, getRecordType, type FieldSpec } from "@/lib/fleet/record-types";
+import { getMasterType } from "@/lib/fleet/master-types";
 
 type Row = Record<string, unknown>;
+interface Opt {
+  id: string;
+  name: string;
+}
 
-function fmtCell(f: FieldSpec, v: unknown): string {
+function fmtCell(f: FieldSpec, v: unknown, options: Record<string, Opt[]>): string {
   if (v == null || v === "") return "-";
+  if (f.type === "select") {
+    const list = f.master ? options[f.master] ?? [] : [];
+    return list.find((o) => o.id === String(v))?.name ?? "-";
+  }
   if (f.type === "money") return baht(Number(v));
   if (f.type === "number") return String(v);
   if (f.type === "date") return thDate(new Date(String(v)).toISOString());
@@ -23,19 +32,59 @@ export default function VehicleRecordsPage({ params }: { params: Promise<{ id: s
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [options, setOptions] = useState<Record<string, Opt[]>>({});
   const formRef = useRef<HTMLFormElement>(null);
 
   const load = useCallback(() => {
     setLoading(true);
+    setLoadErr("");
     fetch(`/api/fleet/records/${tab}?vehicleId=${encodeURIComponent(id)}`)
-      .then((r) => r.json())
-      .then((d) => setRows(Array.isArray(d.rows) ? d.rows : []))
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        // A 401/404 also answers with JSON, so without this check an expired
+        // session reads as "no records yet" and the page quietly lies.
+        if (!r.ok) {
+          setRows([]);
+          setLoadErr(
+            r.status === 401
+              ? "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่"
+              : d.error || "โหลดรายการไม่สำเร็จ"
+          );
+          return;
+        }
+        setRows(Array.isArray(d.rows) ? d.rows : []);
+      })
+      .catch(() => setLoadErr("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้"))
       .finally(() => setLoading(false));
   }, [tab, id]);
 
   useEffect(load, [load]);
+
+  // Dropdown fields read their choices from master data. Fetch each list the
+  // active tab asks for, once per master type.
+  useEffect(() => {
+    for (const f of def.fields) {
+      if (f.type !== "select" || !f.master) continue;
+      const masterKey = f.master;
+      const masterDef = getMasterType(masterKey);
+      if (!masterDef) continue;
+      fetch(`/api/fleet/master/${masterKey}`)
+        .then((r) => (r.ok ? r.json() : { rows: [] }))
+        .then((d) =>
+          setOptions((prev) => ({
+            ...prev,
+            [masterKey]: (d.rows ?? []).map((row: Record<string, unknown>) => ({
+              id: String(row[masterDef.idField]),
+              name: String(row.Name ?? ""),
+            })),
+          }))
+        )
+        .catch(() => {});
+    }
+  }, [def]);
 
   async function add(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -65,7 +114,7 @@ export default function VehicleRecordsPage({ params }: { params: Promise<{ id: s
     <div className="max-w-5xl">
       <PageHeader
         title="ประวัติรถ / เอกสาร"
-        subtitle="ภาษี, พ.ร.บ., ประกัน, ยาง, อุบัติเหตุ, ซ่อม, น้ำมัน, เปลี่ยนถ่าย"
+        subtitle="ภาษี, พ.ร.บ., ประกัน, ยาง, อุบัติเหตุ, ซ่อม, น้ำมัน, เปลี่ยนถ่าย, รายรับ"
         action={
           <Link
             href={`/fleet/vehicles/${id}`}
@@ -99,7 +148,16 @@ export default function VehicleRecordsPage({ params }: { params: Promise<{ id: s
                 {f.label}
                 {f.optional && <span className="text-slate-600"> (ไม่บังคับ)</span>}
               </span>
-              {f.type === "file" ? (
+              {f.type === "select" ? (
+                <select name={f.name} required={!f.optional} className="field w-full" defaultValue="">
+                  <option value="">-</option>
+                  {(f.master ? options[f.master] ?? [] : []).map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              ) : f.type === "file" ? (
                 <input type="file" name={f.name} className="field w-full text-slate-300" />
               ) : (
                 <input
@@ -127,6 +185,7 @@ export default function VehicleRecordsPage({ params }: { params: Promise<{ id: s
 
       <Card>
         <div className="font-medium mb-3">รายการ{def.label}</div>
+        {loadErr && <div className="mb-3 text-sm text-rose-400">{loadErr}</div>}
         {loading ? (
           <div className="py-8 text-center text-slate-400">กำลังโหลด...</div>
         ) : (
@@ -163,7 +222,7 @@ export default function VehicleRecordsPage({ params }: { params: Promise<{ id: s
                               "-"
                             )
                           ) : (
-                            fmtCell(f, r[f.name])
+                            fmtCell(f, r[f.name], options)
                           )}
                         </td>
                       ))}
@@ -178,7 +237,7 @@ export default function VehicleRecordsPage({ params }: { params: Promise<{ id: s
                     </tr>
                   );
                 })}
-                {!rows.length && (
+                {!rows.length && !loadErr && (
                   <tr>
                     <td colSpan={def.fields.length + 1} className="py-8 text-center text-slate-500">
                       ยังไม่มีรายการ
