@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { put } from "@/lib/storage";
-import { normalizeDate } from "@/lib/fleet/dates";
+import { parseScalar } from "@/lib/fleet/record-fields";
 import { getRecordType, type RecordTypeDef } from "@/lib/fleet/record-types";
 import { delegate } from "@/lib/fleet/record-delegates";
 
@@ -116,17 +116,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ type: string }
       return NextResponse.json({ error: `ต้องกรอก: ${f.label}` }, { status: 400 });
     }
 
-    if (f.type === "number") {
-      data[f.name] = Math.trunc(Number(value)) || 0;
-    } else if (f.type === "money" || f.type === "decimal") {
-      data[f.name] = Number(value) || 0;
-    } else if (f.type === "date") {
-      const d = normalizeDate(value);
-      if (!d) return NextResponse.json({ error: `วันที่ไม่ถูกต้อง: ${f.label}` }, { status: 400 });
-      data[f.name] = d;
-    } else {
-      data[f.name] = value;
-    }
+    const parsed = parseScalar(f, value);
+    if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
+    data[f.name] = parsed.value;
   }
 
   const row = await delegate(def).create({ data });

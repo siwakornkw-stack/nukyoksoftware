@@ -14,6 +14,7 @@ interface GenericDelegate {
   }): Promise<Record<string, unknown>[]>;
   create(args: { data: Record<string, unknown> }): Promise<Record<string, unknown>>;
   findUnique(args: { where: Record<string, unknown> }): Promise<Record<string, unknown> | null>;
+  update(args: { where: Record<string, unknown>; data: Record<string, unknown> }): Promise<Record<string, unknown>>;
   delete(args: { where: Record<string, unknown> }): Promise<unknown>;
 }
 

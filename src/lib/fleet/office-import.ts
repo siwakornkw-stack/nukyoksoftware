@@ -98,18 +98,17 @@ function newPlateText(label: string) {
 const fuelKey = (vid: string, r: { date: string; invoice: string; amount: number }) =>
   `${vid}|${r.date}|${r.invoice}|${r.amount.toFixed(2)}`;
 
-async function fuelExisting(vehicleIds: string[], rows: FuelRow[]) {
-  if (!vehicleIds.length || !rows.length) return new Set<string>();
-  const dates = rows.map((r) => r.date).sort();
+// Matched on the key stored at import, not the row's current values, so edits
+// made on the web (amount, date, even moving it to another vehicle) do not
+// make the original spreadsheet row look new again.
+async function fuelExisting(targets: { vid: string; rows: FuelRow[] }[]) {
+  const keys = targets.flatMap((t) => t.rows.map((r) => fuelKey(t.vid, r)));
+  if (!keys.length) return new Set<string>();
   const found = await prisma.gasolineCost.findMany({
-    where: { VehicleId: { in: vehicleIds }, DateTime: { gte: utc(dates[0]), lte: utc(dates[dates.length - 1]) } },
-    select: { VehicleId: true, DateTime: true, TaxInvoiceNumber: true, Amount: true },
+    where: { ImportKey: { in: keys }, Vehicle: { TenantId: T } },
+    select: { ImportKey: true },
   });
-  return new Set(
-    found.map((g) =>
-      fuelKey(g.VehicleId, { date: day(g.DateTime), invoice: g.TaxInvoiceNumber ?? "", amount: Number(g.Amount) })
-    )
-  );
+  return new Set(found.map((g) => g.ImportKey!));
 }
 
 export async function previewFuel(wb: WorkBook): Promise<Preview> {
@@ -117,10 +116,7 @@ export async function previewFuel(wb: WorkBook): Promise<Preview> {
   const vehicles = await loadVehicles();
   const match = plateMatcher(vehicles);
   const matched = sheets.map((s) => match(s.label, s.model));
-  const seen = await fuelExisting(
-    matched.filter((x): x is string => !!x),
-    sheets.flatMap((s) => s.rows)
-  );
+  const seen = await fuelExisting(sheets.flatMap((s, i) => (matched[i] ? [{ vid: matched[i]!, rows: s.rows }] : [])));
 
   return {
     vehicles: vehicleOptions(vehicles),
@@ -168,10 +164,7 @@ export async function commitFuel(
       targets.push({ vid, rows: s.rows });
     }
 
-    const seen = await fuelExisting(
-      targets.map((t) => t.vid),
-      targets.flatMap((t) => t.rows)
-    );
+    const seen = await fuelExisting(targets);
     const data: Prisma.GasolineCostCreateManyInput[] = [];
     let dup = 0;
     for (const { vid, rows } of targets) {
@@ -194,6 +187,7 @@ export async function commitFuel(
           OdometerEnd: r.odoEnd,
           Distance: r.distance,
           ReceiverName: r.receiver || null,
+          ImportKey: k,
           CreatedByUsername: username,
           UpdatedByUsername: username,
         });

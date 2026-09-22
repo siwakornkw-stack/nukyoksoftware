@@ -520,6 +520,9 @@ model GasolineCost {
   OdometerEnd Decimal @db.Decimal(12,2)
   Distance Decimal? @db.Decimal(12,2)
   ReceiverName String?
+  // Identity of the spreadsheet row this came from, fixed at import time so a
+  // row edited on the web is still recognised when the same file is re-imported.
+  ImportKey String? @db.VarChar(200)
   CreatedAt DateTime @default(now())
   UpdatedAt DateTime @default(now())
   CreatedByUsername String?
@@ -529,6 +532,7 @@ model GasolineCost {
   Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
   @@index([VehicleId])
   @@index([GasolineCostId])
+  @@index([ImportKey])
 }
 
 model DrainTheOilVehicle {

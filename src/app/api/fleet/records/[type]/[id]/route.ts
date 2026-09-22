@@ -4,6 +4,7 @@ import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { getRecordType } from "@/lib/fleet/record-types";
 import { delegate } from "@/lib/fleet/record-delegates";
+import { parseScalar } from "@/lib/fleet/record-fields";
 
 export const dynamic = "force-dynamic";
 
@@ -26,5 +27,57 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ type: strin
   }
 
   await delegate(def).delete({ where: { [def.idField]: id } });
+  return NextResponse.json({ ok: true });
+}
+
+const ownsVehicle = async (vehicleId: string) => {
+  const v = vehicleId ? await prisma.vehicle.findUnique({ where: { VehicleId: vehicleId } }) : null;
+  return !!v && v.TenantId === DEFAULT_TENANT_ID;
+};
+
+// JSON body with only the fields being changed. File fields are not editable
+// here; VehicleId moves the record to another vehicle of the same tenant.
+export async function PATCH(req: Request, ctx: { params: Promise<{ type: string; id: string }> }) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { type, id } = await ctx.params;
+  const def = getRecordType(type);
+  if (!def) return NextResponse.json({ error: "unknown record type" }, { status: 404 });
+
+  const row = await delegate(def).findUnique({ where: { [def.idField]: id } });
+  if (!row || !(await ownsVehicle(String(row.VehicleId || "")))) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+
+  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!body || typeof body !== "object") return NextResponse.json({ error: "ข้อมูลไม่ถูกต้อง" }, { status: 400 });
+
+  const data: Record<string, unknown> = { UpdatedByUsername: session.username, UpdatedAt: new Date() };
+
+  if ("VehicleId" in body) {
+    const vid = String(body.VehicleId ?? "");
+    if (!(await ownsVehicle(vid))) return NextResponse.json({ error: "ไม่พบรถคันนี้" }, { status: 400 });
+    data.VehicleId = vid;
+  }
+
+  for (const f of def.fields) {
+    if (!(f.name in body) || f.type === "file") continue;
+    const value = String(body[f.name] ?? "").trim();
+    if (value === "") {
+      if (!f.optional) return NextResponse.json({ error: `ต้องกรอก: ${f.label}` }, { status: 400 });
+      data[f.name] = null;
+      continue;
+    }
+    if (f.type === "select") {
+      data[f.name] = value;
+      continue;
+    }
+    const parsed = parseScalar(f, value);
+    if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
+    data[f.name] = parsed.value;
+  }
+
+  await delegate(def).update({ where: { [def.idField]: id }, data });
   return NextResponse.json({ ok: true });
 }

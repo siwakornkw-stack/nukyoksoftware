@@ -11,8 +11,11 @@ import {
   thMonth,
   type FuelRecord,
 } from "@/lib/fleet/fuel-report";
+import { prisma } from "@/lib/db";
+import { DEFAULT_TENANT_ID } from "@/lib/tenant";
+import { plateText } from "@/lib/fleet/plates";
 import { FuelFilters } from "../FuelFilters";
-import { DeleteRecordButton } from "../../DeleteRecordButton";
+import { FuelRow } from "./FuelRow";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +30,20 @@ export default async function FuelRecordsPage({ searchParams }: { searchParams: 
   const { from, to } = resolveRange(sp, opts.latestMonth);
   const q = (sp.q ?? "").trim().toLowerCase();
 
-  const all = await loadFuelRecords({ from, to, vehicleId: sp.vehicle || undefined, receiver: sp.receiver || undefined });
+  const [all, vehicleRows] = await Promise.all([
+    loadFuelRecords({ from, to, vehicleId: sp.vehicle || undefined, receiver: sp.receiver || undefined }),
+    prisma.vehicle.findMany({
+      where: { TenantId: DEFAULT_TENANT_ID },
+      select: { VehicleId: true, LicensePlatePrefix: true, LicensePlateSuffix: true, Model: true },
+      orderBy: { No: "asc" },
+    }),
+  ]);
+  const allVehicles = vehicleRows
+    .map((v) => {
+      const plate = plateText(v) || v.Model;
+      return { id: v.VehicleId, plate: v.Model && v.Model !== plate ? `${plate} - ${v.Model}` : plate };
+    })
+    .sort((a, b) => a.plate.localeCompare(b.plate, "th"));
   const rows = q ? all.filter((r) => `${r.invoice} ${r.item} ${r.receiver}`.toLowerCase().includes(q)) : all;
 
   // Flags are computed over the whole range, then shown on the matching rows.
@@ -137,22 +153,7 @@ export default async function FuelRecordsPage({ searchParams }: { searchParams: 
                   </thead>
                   <tbody>
                     {list.map((r) => (
-                      <tr key={r.id} className="border-b border-slate-800/50">
-                        <td className={`${td} text-slate-400`}>{thDate(r.date)}</td>
-                        <td className={td}>{r.item}</td>
-                        <td className={`${td} text-slate-300`}>{r.invoice || "-"}</td>
-                        <td className={`${td} text-right`}>{r.odoStart ? num(r.odoStart, 2) : "-"}</td>
-                        <td className={`${td} text-right`}>{r.odoEnd ? num(r.odoEnd, 2) : "-"}</td>
-                        <td className={`${td} text-right`}>{r.distance ? num(r.distance, 2) : "-"}</td>
-                        <td className={`${td} text-right`}>{baht(r.amount)}</td>
-                        <td className={`${td} text-right`}>{num(r.liters, 2)}</td>
-                        <td className={`${td} text-right text-slate-400`}>{r.liters ? num(r.amount / r.liters, 2) : "-"}</td>
-                        <td className={`${td} text-slate-400`}>{r.receiver || "-"}</td>
-                        <td className={`${td} text-xs text-amber-300`}>{flags.get(r.id)?.join(", ") ?? ""}</td>
-                        <td className={td}>
-                          <DeleteRecordButton type="gasoline" id={r.id} what="รายการน้ำมัน" />
-                        </td>
-                      </tr>
+                      <FuelRow key={r.id} row={r} flags={flags.get(r.id)?.join(", ") ?? ""} vehicles={allVehicles} />
                     ))}
                   </tbody>
                   <tfoot>
