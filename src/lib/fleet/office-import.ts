@@ -23,6 +23,7 @@ export interface PreviewItem {
   match: string | null;
   count: number;
   dup: number;
+  notes?: number; // insurance: stored records whose note the file will update
 }
 
 export interface Preview {
@@ -35,6 +36,7 @@ export interface CommitResult {
   dup: number;
   skipped: number;
   vehiclesCreated: number;
+  notesUpdated?: number;
 }
 
 type Tx = Prisma.TransactionClient;
@@ -264,11 +266,49 @@ async function insExisting() {
   return seen;
 }
 
+type NoteChange = { kind: Kind; id: string; note: string };
+
+// Stored records for this row whose note differs from the file's. The office
+// rewrites the note as the status changes ("กำลังต่อ" -> "ขายรถแล้ว"), so the old
+// text is kept in brackets rather than lost. An empty note in the file changes nothing.
+async function noteChanges(db: Tx, vid: string, row: InsuranceRow): Promise<NoteChange[]> {
+  if (!row.note) return [];
+  const out: NoteChange[] = [];
+  for (const [kind, end] of insDates(row)) {
+    const where = {
+      Vehicle: { TenantId: T },
+      OR: [{ ImportKey: `${kind}|${vid}|${end}` }, { VehicleId: vid, EndDate: utc(end) }],
+    };
+    const found =
+      kind === "ins"
+        ? (await db.insurancePolicyVehicle.findMany({ where, select: { InsurancePolicyVehicleId: true, Note: true } })).map((r) => ({ id: r.InsurancePolicyVehicleId, old: r.Note }))
+        : kind === "cmi"
+          ? (await db.compulsoryMotorInsuranceVehicle.findMany({ where, select: { CompulsoryMotorInsuranceVehicleId: true, Note: true } })).map((r) => ({ id: r.CompulsoryMotorInsuranceVehicleId, old: r.Note }))
+          : (await db.tax.findMany({ where, select: { TaxId: true, Note: true } })).map((r) => ({ id: r.TaxId, old: r.Note }));
+    for (const f of found) {
+      const old = f.old ?? "";
+      if (old.startsWith(row.note)) continue;
+      out.push({ kind, id: f.id, note: old ? `${row.note} (เดิม: ${old})` : row.note });
+    }
+  }
+  return out;
+}
+
+async function applyNoteChanges(tx: Tx, changes: NoteChange[], username: string) {
+  for (const c of changes) {
+    const data = { Note: c.note, UpdatedByUsername: username, UpdatedAt: new Date() };
+    if (c.kind === "ins") await tx.insurancePolicyVehicle.update({ where: { InsurancePolicyVehicleId: c.id }, data });
+    else if (c.kind === "cmi") await tx.compulsoryMotorInsuranceVehicle.update({ where: { CompulsoryMotorInsuranceVehicleId: c.id }, data });
+    else await tx.tax.update({ where: { TaxId: c.id }, data });
+  }
+}
+
 export async function previewInsurance(wb: WorkBook): Promise<Preview> {
   const rows = parseInsuranceWorkbook(wb);
   const { vehicles, match } = await loadMatcher();
   const matched = rows.map((r) => match(r.label));
   const seen = await insExisting();
+  const notes = await Promise.all(rows.map((r, i) => (matched[i] ? noteChanges(prisma, matched[i]!, r) : [])));
   const label: Record<Kind, string> = { ins: "ประกัน", cmi: "พ.ร.บ.", tax: "ภาษี" };
 
   return {
@@ -292,6 +332,7 @@ export async function previewInsurance(wb: WorkBook): Promise<Preview> {
         match: vid,
         count: dates.length,
         dup: vid ? dates.filter(([k, d]) => seen.has(`${k}|${vid}|${d}`)).length : 0,
+        notes: notes[i].length,
       };
     }),
   };
@@ -324,6 +365,9 @@ export async function commitInsurance(
     }
 
     const seen = await insExisting();
+    // Worked out before the inserts, so only records that already existed are touched.
+    const changes = (await Promise.all(targets.map((t) => noteChanges(tx, t.vid, t.row)))).flat();
+    await applyNoteChanges(tx, changes, username);
     const ins: Prisma.InsurancePolicyVehicleCreateManyInput[] = [];
     const cmi: Prisma.CompulsoryMotorInsuranceVehicleCreateManyInput[] = [];
     const tax: Prisma.TaxCreateManyInput[] = [];
@@ -374,6 +418,6 @@ export async function commitInsurance(
         CreatedByUsername: username,
       },
     });
-    return { created, dup, skipped, vehiclesCreated: creator.count() };
+    return { created, dup, skipped, vehiclesCreated: creator.count(), notesUpdated: changes.length };
   });
 }
