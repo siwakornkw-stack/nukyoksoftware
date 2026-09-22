@@ -7,7 +7,7 @@
 // This module is imported by a client component, so it must stay free of
 // server-only imports. The prisma lookup lives in ./record-delegates.
 
-export type FieldType = "text" | "number" | "date" | "money" | "file" | "select";
+export type FieldType = "text" | "number" | "decimal" | "date" | "money" | "file" | "select";
 
 export interface FieldSpec {
   name: string; // Prisma column name
@@ -58,6 +58,7 @@ export const RECORD_TYPES: RecordTypeDef[] = [
       { name: "TotalPremium", label: "เบี้ยรวม", type: "money" },
       { name: "InsuranceCompany", label: "บริษัทประกัน", type: "text" },
       { name: "BrokerName", label: "นายหน้า", type: "text" },
+      { name: "Note", label: "หมายเหตุ", type: "text", optional: true },
       { name: "File", label: "ไฟล์เอกสาร", type: "file", optional: true },
     ],
   },
@@ -73,6 +74,7 @@ export const RECORD_TYPES: RecordTypeDef[] = [
       { name: "TotalPremium", label: "เบี้ยรวม", type: "money" },
       { name: "InsuranceCompany", label: "บริษัทประกัน", type: "text" },
       { name: "BrokerName", label: "นายหน้า", type: "text" },
+      { name: "Note", label: "หมายเหตุ", type: "text", optional: true },
       { name: "File", label: "ไฟล์เอกสาร", type: "file", optional: true },
     ],
   },
@@ -90,6 +92,7 @@ export const RECORD_TYPES: RecordTypeDef[] = [
       { name: "StartDate", label: "วันเริ่ม", type: "date" },
       { name: "EndDate", label: "วันสิ้นอายุ", type: "date" },
       { name: "TotalPremium", label: "เบี้ยรวม", type: "money" },
+      { name: "Note", label: "หมายเหตุ", type: "text", optional: true },
       { name: "PolicyFile", label: "กรมธรรม์", type: "file", optional: true },
     ],
   },
@@ -147,10 +150,12 @@ export const RECORD_TYPES: RecordTypeDef[] = [
       { name: "DateTime", label: "วันที่", type: "date" },
       { name: "Item", label: "รายการ", type: "text" },
       { name: "TaxInvoiceNumber", label: "เลขใบกำกับภาษี", type: "text", optional: true },
-      { name: "Liters", label: "ลิตร", type: "number" },
+      { name: "Liters", label: "ลิตร", type: "decimal" },
       { name: "Amount", label: "จำนวนเงิน", type: "money" },
-      { name: "OdometerStart", label: "เลขไมล์เริ่ม", type: "number" },
-      { name: "OdometerEnd", label: "เลขไมล์สิ้นสุด", type: "number" },
+      { name: "OdometerStart", label: "เลขไมล์เริ่ม", type: "decimal" },
+      { name: "OdometerEnd", label: "เลขไมล์สิ้นสุด", type: "decimal" },
+      { name: "Distance", label: "ระยะทาง", type: "decimal", optional: true },
+      { name: "ReceiverName", label: "ผู้รับน้ำมัน", type: "text", optional: true },
     ],
   },
   {

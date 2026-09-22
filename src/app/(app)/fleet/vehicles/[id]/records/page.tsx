@@ -3,7 +3,7 @@
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { PageHeader, Card } from "@/components/ui";
-import { baht, thDate } from "@/lib/format";
+import { baht, num, thDate } from "@/lib/format";
 import { RECORD_TYPES, getRecordType, type FieldSpec } from "@/lib/fleet/record-types";
 import { getMasterType } from "@/lib/fleet/master-types";
 
@@ -21,6 +21,7 @@ function fmtCell(f: FieldSpec, v: unknown, options: Record<string, Opt[]>): stri
   }
   if (f.type === "money") return baht(Number(v));
   if (f.type === "number") return String(v);
+  if (f.type === "decimal") return num(Number(v), 2);
   if (f.type === "date") return thDate(new Date(String(v)).toISOString());
   return String(v);
 }
@@ -161,8 +162,8 @@ export default function VehicleRecordsPage({ params }: { params: Promise<{ id: s
                 <input type="file" name={f.name} className="field w-full text-slate-300" />
               ) : (
                 <input
-                  type={f.type === "date" ? "date" : f.type === "number" || f.type === "money" ? "number" : "text"}
-                  step={f.type === "money" ? "0.01" : undefined}
+                  type={f.type === "date" ? "date" : f.type === "number" || f.type === "money" || f.type === "decimal" ? "number" : "text"}
+                  step={f.type === "money" || f.type === "decimal" ? "0.01" : undefined}
                   name={f.name}
                   required={!f.optional}
                   className="field w-full"

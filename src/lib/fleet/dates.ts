@@ -10,7 +10,11 @@ export function normalizeDate(v: unknown): Date | null {
     // Excel serial (1900 date system) -> UTC midnight of that day
     const ms = Math.round((v - 25569) * 86400 * 1000);
     const d = new Date(ms);
-    return isNaN(d.getTime()) ? null : d;
+    if (isNaN(d.getTime())) return null;
+    // Office sheets type "5/5/2569" and Excel stores it as a serial in year 2569.
+    const y = d.getUTCFullYear();
+    if (y >= 2400) return new Date(Date.UTC(y - 543, d.getUTCMonth(), d.getUTCDate()));
+    return d;
   }
 
   const s = String(v).trim();

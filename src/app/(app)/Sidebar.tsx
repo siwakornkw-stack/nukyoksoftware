@@ -25,6 +25,22 @@ const groups: { title: string | null; items: { href: string; label: string; icon
     ],
   },
   {
+    title: "น้ำมัน",
+    items: [
+      { href: "/fleet/fuel", label: "รายงานน้ำมัน", icon: "📈" },
+      { href: "/fleet/fuel/records", label: "รายละเอียดน้ำมัน", icon: "🛢️" },
+      { href: "/fleet/fuel/import", label: "นำเข้าค่าน้ำมัน", icon: "⬆️" },
+    ],
+  },
+  {
+    title: "พ.ร.บ. & ประกัน",
+    items: [
+      { href: "/fleet/insurance", label: "รายงาน พ.ร.บ./ประกัน", icon: "🛡️" },
+      { href: "/fleet/insurance/records", label: "รายละเอียด", icon: "📄" },
+      { href: "/fleet/insurance/import", label: "นำเข้าตารางประกัน", icon: "⬆️" },
+    ],
+  },
+  {
     title: "บิลน้ำมัน",
     items: [{ href: "/fuel", label: "ตรวจบิลน้ำมัน", icon: "⛽" }],
   },

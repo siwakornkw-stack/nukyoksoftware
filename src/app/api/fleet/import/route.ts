@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { normalizeDate } from "@/lib/fleet/dates";
+import { VEHICLE_DEFAULTS } from "@/lib/fleet/vehicle-defaults";
 
 export const dynamic = "force-dynamic";
 
@@ -27,28 +28,6 @@ function toNum(v: string): number | null {
   const n = parseFloat(v.replace(/,/g, ""));
   return isNaN(n) ? null : n;
 }
-
-// Required Vehicle columns default to empty/zero so a light import works.
-const VEHICLE_DEFAULTS = {
-  VehicleCharacteristic: "",
-  Generation: "",
-  ChassisNumber: "",
-  EngineNumber: "",
-  EngineBrand: "",
-  TankSize: 0,
-  FuelConsumption: 0,
-  CylinderCount: 0,
-  Cylinder: 0,
-  VehicleSize: "",
-  CargoSize: "",
-  GasSerialNumber: "",
-  VehicleWeight: 0,
-  CargoWeight: 0,
-  WheelCount: 0,
-  SeatCount: 0,
-  Age: "",
-  Ownership: "",
-};
 
 const PLATE_KEYS = ["เลขทะเบียน", "ทะเบียน", "เลขที่ทะเบียน", "ทะเบียนรถ", "plate", "Plate"];
 const PREFIX_KEYS = ["หมวด", "หมวดทะเบียน", "prefix"];

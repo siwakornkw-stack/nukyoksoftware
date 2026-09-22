@@ -1,0 +1,21 @@
+// Required Vehicle columns default to empty/zero so a light import works.
+export const VEHICLE_DEFAULTS = {
+  VehicleCharacteristic: "",
+  Generation: "",
+  ChassisNumber: "",
+  EngineNumber: "",
+  EngineBrand: "",
+  TankSize: 0,
+  FuelConsumption: 0,
+  CylinderCount: 0,
+  Cylinder: 0,
+  VehicleSize: "",
+  CargoSize: "",
+  GasSerialNumber: "",
+  VehicleWeight: 0,
+  CargoWeight: 0,
+  WheelCount: 0,
+  SeatCount: 0,
+  Age: "",
+  Ownership: "",
+};

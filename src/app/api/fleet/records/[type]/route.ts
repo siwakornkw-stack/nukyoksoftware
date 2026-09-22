@@ -22,7 +22,7 @@ async function ownsVehicle(vehicleId: string): Promise<boolean> {
 function withNumericMoney(def: RecordTypeDef, row: Record<string, unknown>) {
   const out = { ...row };
   for (const f of def.fields) {
-    if (f.type === "money" && out[f.name] != null) out[f.name] = Number(out[f.name]);
+    if ((f.type === "money" || f.type === "decimal") && out[f.name] != null) out[f.name] = Number(out[f.name]);
   }
   return out;
 }
@@ -118,7 +118,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ type: string }
 
     if (f.type === "number") {
       data[f.name] = Math.trunc(Number(value)) || 0;
-    } else if (f.type === "money") {
+    } else if (f.type === "money" || f.type === "decimal") {
       data[f.name] = Number(value) || 0;
     } else if (f.type === "date") {
       const d = normalizeDate(value);
