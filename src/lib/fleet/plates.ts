@@ -45,7 +45,8 @@ function uniqueMap(entries: [string, string][]) {
   return map;
 }
 
-export function plateMatcher(vehicles: PlateVehicle[]) {
+// aliases: plateKey(label) -> VehicleId, learned from earlier manual mappings.
+export function plateMatcher(vehicles: PlateVehicle[], aliases: Map<string, string> = new Map()) {
   const full = uniqueMap(vehicles.map((v) => [plateKey(v.LicensePlatePrefix + v.LicensePlateSuffix), v.VehicleId]));
   const model = uniqueMap(vehicles.map((v) => [plateKey(v.Model), v.VehicleId]));
   const suffix = uniqueMap(
@@ -53,6 +54,10 @@ export function plateMatcher(vehicles: PlateVehicle[]) {
   );
 
   return (...labels: string[]): string | null => {
+    for (const label of labels.filter(Boolean)) {
+      const alias = aliases.get(plateKey(label));
+      if (alias) return alias;
+    }
     for (const label of labels.filter(Boolean)) {
       const g = guessPlate(label);
       for (const k of [plateKey(label), plateKey(g.prefix + g.suffix)]) {

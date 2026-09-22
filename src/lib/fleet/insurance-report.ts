@@ -35,6 +35,7 @@ export interface InsRecord {
   start: string | null;
   year: number;
   company: string;
+  broker: string;
   cls: string;
   premium: number;
   note: string;
@@ -86,6 +87,7 @@ export async function loadInsuranceRecords(): Promise<InsRecord[]> {
       EndDate: Date;
       Year: number;
       InsuranceCompany: string;
+      BrokerName: string;
       TotalPremium: unknown;
       Note: string | null;
       CreatedByUsername: string | null;
@@ -106,6 +108,7 @@ export async function loadInsuranceRecords(): Promise<InsRecord[]> {
       start: extra.start ? iso(extra.start) : null,
       year: r.Year,
       company: r.InsuranceCompany,
+      broker: r.BrokerName,
       cls: extra.cls ?? "",
       premium: Number(r.TotalPremium),
       note: r.Note ?? "",

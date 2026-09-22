@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { PageHeader, Card } from "@/components/ui";
-import { baht, thDate } from "@/lib/format";
+import { baht } from "@/lib/format";
 import {
   KINDS,
   KIND_LABEL,
@@ -13,14 +13,16 @@ import {
   type Kind,
   type Status,
 } from "@/lib/fleet/insurance-report";
-import { DeleteRecordButton } from "../../DeleteRecordButton";
+import { prisma } from "@/lib/db";
+import { DEFAULT_TENANT_ID } from "@/lib/tenant";
+import { plateText } from "@/lib/fleet/plates";
+import { InsRow } from "./InsRow";
 
 export const dynamic = "force-dynamic";
 
 type SP = { kind?: string; status?: string; vehicle?: string; q?: string; latest?: string };
 
 const th = "py-2 pr-3 font-normal";
-const td = "py-2 pr-3";
 
 export default async function InsuranceRecordsPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
@@ -29,7 +31,19 @@ export default async function InsuranceRecordsPage({ searchParams }: { searchPar
   const latestOnly = sp.latest === "1";
   const q = (sp.q ?? "").trim().toLowerCase();
 
-  const all = await loadInsuranceRecords();
+  const [all, vehicleRows] = await Promise.all([
+    loadInsuranceRecords(),
+    prisma.vehicle.findMany({
+      where: { TenantId: DEFAULT_TENANT_ID },
+      select: { VehicleId: true, LicensePlatePrefix: true, LicensePlateSuffix: true, Model: true },
+    }),
+  ]);
+  const allVehicles = vehicleRows
+    .map((v) => {
+      const plate = plateText(v) || v.Model;
+      return { id: v.VehicleId, plate: v.Model && v.Model !== plate ? `${plate} - ${v.Model}` : plate };
+    })
+    .sort((a, b) => a.plate.localeCompare(b.plate, "th"));
   const vehicles = [...new Map(all.map((r) => [r.vehicleId, r.plate])).entries()].sort((a, b) => a[1].localeCompare(b[1], "th"));
 
   const newest = new Map<string, string>();
@@ -134,30 +148,17 @@ export default async function InsuranceRecordsPage({ searchParams }: { searchPar
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={`${r.kind}-${r.id}`} className={`border-b border-slate-800/50 ${isLatest(r) ? "" : "opacity-60"}`}>
-                  <td className={td}>{KIND_LABEL[r.kind]}</td>
-                  <td className={td}>
-                    <Link href={`/fleet/vehicles/${r.vehicleId}/records`} className="text-sky-400 hover:underline">
-                      {r.plate}
-                    </Link>
-                  </td>
-                  <td className={`${td} text-slate-400`}>{r.year || "-"}</td>
-                  <td className={`${td} text-slate-400`}>{r.start ? thDate(r.start) : "-"}</td>
-                  <td className={td}>{thDate(r.end)}</td>
-                  <td className={td}>
-                    <span className={`rounded-md border px-2 py-0.5 text-xs ${STATUS_STYLE[r.status]}`}>{STATUS_LABEL[r.status]}</span>
-                    <span className="ml-2 text-xs text-slate-500">{daysText(r.days)}</span>
-                    {!isLatest(r) && <span className="ml-2 text-xs text-slate-500">(ต่ออายุแล้ว)</span>}
-                  </td>
-                  <td className={`${td} text-slate-400`}>{r.cls || "-"}</td>
-                  <td className={`${td} text-slate-300`}>{r.company || "-"}</td>
-                  <td className={`${td} text-right`}>{r.premium ? baht(r.premium) : "-"}</td>
-                  <td className={`${td} text-xs text-slate-400 whitespace-normal min-w-40`}>{r.note || "-"}</td>
-                  <td className={`${td} text-xs text-slate-500`}>{r.createdBy || "-"}</td>
-                  <td className={td}>
-                    <DeleteRecordButton type={KIND_RECORD[r.kind]} id={r.id} what={KIND_LABEL[r.kind]} />
-                  </td>
-                </tr>
+                <InsRow
+                  key={`${r.kind}-${r.id}`}
+                  row={r}
+                  label={KIND_LABEL[r.kind]}
+                  recordType={KIND_RECORD[r.kind]}
+                  latest={isLatest(r)}
+                  statusLabel={STATUS_LABEL[r.status]}
+                  statusStyle={STATUS_STYLE[r.status]}
+                  daysText={daysText(r.days)}
+                  vehicles={allVehicles}
+                />
               ))}
               {!rows.length && (
                 <tr>

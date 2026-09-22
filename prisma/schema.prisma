@@ -231,7 +231,23 @@ model Vehicle {
   InstallmentsVehicle InstallmentsVehicle[]
   ImageVehicle ImageVehicle[]
   IncomeVehicle IncomeVehicle[]
+  Aliases VehicleAlias[]
   @@index([TenantId])
+  @@index([VehicleId])
+}
+
+// Other names the office spreadsheets use for a vehicle ("SANY135" for SY135),
+// learned when someone maps an import row to a vehicle by hand.
+model VehicleAlias {
+  VehicleAliasId String @id @default(uuid()) @db.VarChar(36)
+  TenantId String @db.VarChar(36)
+  AliasKey String @db.VarChar(200)
+  Label String
+  VehicleId String @db.VarChar(36)
+  Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId], onDelete: Cascade)
+  CreatedAt DateTime @default(now())
+  CreatedByUsername String?
+  @@unique([TenantId, AliasKey])
   @@index([VehicleId])
 }
 
@@ -385,6 +401,7 @@ model Tax {
   BrokerName String
   File String?
   Note String?
+  ImportKey String? @db.VarChar(200)
   CreatedAt DateTime @default(now())
   UpdatedAt DateTime @default(now())
   CreatedByUsername String?
@@ -393,6 +410,7 @@ model Tax {
   Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
   @@index([VehicleId])
   @@index([TaxId])
+  @@index([ImportKey])
 }
 
 model CompulsoryMotorInsuranceVehicle {
@@ -405,6 +423,7 @@ model CompulsoryMotorInsuranceVehicle {
   BrokerName String
   File String?
   Note String?
+  ImportKey String? @db.VarChar(200)
   CreatedAt DateTime @default(now())
   UpdatedAt DateTime @default(now())
   CreatedByUsername String?
@@ -413,6 +432,7 @@ model CompulsoryMotorInsuranceVehicle {
   Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
   @@index([VehicleId])
   @@index([CompulsoryMotorInsuranceVehicleId])
+  @@index([ImportKey])
 }
 
 model InsurancePolicyVehicle {
@@ -427,6 +447,7 @@ model InsurancePolicyVehicle {
   TotalPremium Decimal @db.Decimal(10,2)
   PolicyFile String?
   Note String?
+  ImportKey String? @db.VarChar(200)
   CreatedAt DateTime @default(now())
   UpdatedAt DateTime @default(now())
   CreatedByUsername String?
@@ -435,6 +456,7 @@ model InsurancePolicyVehicle {
   Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
   @@index([VehicleId])
   @@index([InsurancePolicyVehicleId])
+  @@index([ImportKey])
 }
 
 model AttachFileVehicle {

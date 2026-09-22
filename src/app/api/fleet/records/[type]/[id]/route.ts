@@ -66,7 +66,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ type: string;
     const value = String(body[f.name] ?? "").trim();
     if (value === "") {
       if (!f.optional) return NextResponse.json({ error: `ต้องกรอก: ${f.label}` }, { status: 400 });
-      data[f.name] = null;
+      // Several optional text columns are NOT NULL (company, broker); "" fits both kinds.
+      data[f.name] = f.type === "text" ? "" : null;
       continue;
     }
     if (f.type === "select") {

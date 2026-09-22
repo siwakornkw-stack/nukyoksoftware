@@ -56,6 +56,27 @@ function vehicleOptions(vs: Awaited<ReturnType<typeof loadVehicles>>) {
   return vs.map((v) => ({ id: v.VehicleId, plate: plateText(v), model: v.Model }));
 }
 
+async function loadMatcher() {
+  const [vehicles, aliases] = await Promise.all([
+    loadVehicles(),
+    prisma.vehicleAlias.findMany({ where: { TenantId: T }, select: { AliasKey: true, VehicleId: true } }),
+  ]);
+  const match = plateMatcher(vehicles, new Map(aliases.map((a) => [a.AliasKey, a.VehicleId])));
+  return { vehicles, match, valid: new Set(vehicles.map((v) => v.VehicleId)) };
+}
+
+// A row the user pointed at a different vehicle than we guessed teaches us that
+// the label is another name for it, so the next month's file matches by itself.
+async function rememberAlias(tx: Tx, label: string, vehicleId: string, username: string) {
+  const AliasKey = plateKey(label);
+  if (!AliasKey) return;
+  await tx.vehicleAlias.upsert({
+    where: { TenantId_AliasKey: { TenantId: T, AliasKey } },
+    create: { TenantId: T, AliasKey, Label: label, VehicleId: vehicleId, CreatedByUsername: username },
+    update: { VehicleId: vehicleId, Label: label },
+  });
+}
+
 // One new vehicle per plate even if several sheets/rows ask for it.
 function vehicleCreator(tx: Tx, username: string) {
   const made = new Map<string, string>();
@@ -113,8 +134,7 @@ async function fuelExisting(targets: { vid: string; rows: FuelRow[] }[]) {
 
 export async function previewFuel(wb: WorkBook): Promise<Preview> {
   const sheets = parseFuelWorkbook(wb);
-  const vehicles = await loadVehicles();
-  const match = plateMatcher(vehicles);
+  const { vehicles, match } = await loadMatcher();
   const matched = sheets.map((s) => match(s.label, s.model));
   const seen = await fuelExisting(sheets.flatMap((s, i) => (matched[i] ? [{ vid: matched[i]!, rows: s.rows }] : [])));
 
@@ -146,21 +166,21 @@ export async function commitFuel(
   fileName: string
 ): Promise<CommitResult> {
   const sheets = parseFuelWorkbook(wb);
-  const vehicles = await loadVehicles();
-  const valid = new Set(vehicles.map((v) => v.VehicleId));
-  const match = plateMatcher(vehicles);
+  const { match, valid } = await loadMatcher();
 
   return prisma.$transaction(async (tx) => {
     const creator = vehicleCreator(tx, username);
     const targets: { vid: string; rows: FuelRow[] }[] = [];
     let skipped = 0;
     for (const s of sheets) {
-      const d = decisions[s.sheet] ?? match(s.label, s.model) ?? "new";
+      const auto = match(s.label, s.model);
+      const d = decisions[s.sheet] ?? auto ?? "new";
       if (d === "skip" || (d !== "new" && !valid.has(d))) {
         skipped += s.rows.length;
         continue;
       }
       const vid = d === "new" ? await creator.create(s.label, s.model) : d;
+      if (d !== "new" && d !== auto) await rememberAlias(tx, s.label, d, username);
       targets.push({ vid, rows: s.rows });
     }
 
@@ -224,27 +244,31 @@ function insDates(r: InsuranceRow): [Kind, string][] {
   return out;
 }
 
-async function insExisting(vehicleIds: string[]) {
+// A spreadsheet row counts as stored if either its import key is on file (the
+// record may have been edited or moved since) or a record with the same
+// vehicle + kind + expiry exists now (e.g. someone renewed it by hand first).
+async function insExisting() {
   const seen = new Set<string>();
-  if (!vehicleIds.length) return seen;
-  const where = { VehicleId: { in: vehicleIds } };
-  const select = { VehicleId: true, EndDate: true };
+  const where = { Vehicle: { TenantId: T } };
+  const select = { VehicleId: true, EndDate: true, ImportKey: true };
   const [ins, cmi, tax] = await Promise.all([
     prisma.insurancePolicyVehicle.findMany({ where, select }),
     prisma.compulsoryMotorInsuranceVehicle.findMany({ where, select }),
     prisma.tax.findMany({ where, select }),
   ]);
   for (const [kind, rows] of [["ins", ins], ["cmi", cmi], ["tax", tax]] as const)
-    for (const r of rows) seen.add(`${kind}|${r.VehicleId}|${day(r.EndDate)}`);
+    for (const r of rows) {
+      seen.add(`${kind}|${r.VehicleId}|${day(r.EndDate)}`);
+      if (r.ImportKey) seen.add(r.ImportKey);
+    }
   return seen;
 }
 
 export async function previewInsurance(wb: WorkBook): Promise<Preview> {
   const rows = parseInsuranceWorkbook(wb);
-  const vehicles = await loadVehicles();
-  const match = plateMatcher(vehicles);
+  const { vehicles, match } = await loadMatcher();
   const matched = rows.map((r) => match(r.label));
-  const seen = await insExisting(matched.filter((x): x is string => !!x));
+  const seen = await insExisting();
   const label: Record<Kind, string> = { ins: "ประกัน", cmi: "พ.ร.บ.", tax: "ภาษี" };
 
   return {
@@ -280,9 +304,7 @@ export async function commitInsurance(
   fileName: string
 ): Promise<CommitResult> {
   const rows = parseInsuranceWorkbook(wb);
-  const vehicles = await loadVehicles();
-  const valid = new Set(vehicles.map((v) => v.VehicleId));
-  const match = plateMatcher(vehicles);
+  const { match, valid } = await loadMatcher();
 
   return prisma.$transaction(async (tx) => {
     const creator = vehicleCreator(tx, username);
@@ -290,16 +312,18 @@ export async function commitInsurance(
     let skipped = 0;
     for (const r of rows) {
       const dates = insDates(r);
-      const d = decisions[r.key] ?? (dates.length ? match(r.label) ?? "new" : "skip");
+      const auto = match(r.label);
+      const d = decisions[r.key] ?? (dates.length ? auto ?? "new" : "skip");
       if (!dates.length || d === "skip" || (d !== "new" && !valid.has(d))) {
         skipped += dates.length;
         continue;
       }
       const vid = d === "new" ? await creator.create(r.label, "", [r.vehicleType, r.characteristic].filter(Boolean).join(" ")) : d;
+      if (d !== "new" && d !== auto) await rememberAlias(tx, r.label, d, username);
       targets.push({ vid, row: r });
     }
 
-    const seen = await insExisting(targets.map((t) => t.vid));
+    const seen = await insExisting();
     const ins: Prisma.InsurancePolicyVehicleCreateManyInput[] = [];
     const cmi: Prisma.CompulsoryMotorInsuranceVehicleCreateManyInput[] = [];
     const tax: Prisma.TaxCreateManyInput[] = [];
@@ -323,14 +347,15 @@ export async function commitInsurance(
         seen.add(k);
         const EndDate = utc(end);
         const Year = beYear(end);
+        const rec = { ...base, Year, EndDate, ImportKey: k };
         if (kind === "ins") {
           const StartDate = new Date(EndDate);
           StartDate.setUTCFullYear(StartDate.getUTCFullYear() - 1);
-          ins.push({ ...base, Year, EndDate, StartDate, Type: row.insClass || "-", InsuranceCompany: row.insCompany });
+          ins.push({ ...rec, StartDate, Type: row.insClass || "-", InsuranceCompany: row.insCompany });
         } else if (kind === "cmi") {
-          cmi.push({ ...base, Year, EndDate, InsuranceCompany: "" });
+          cmi.push({ ...rec, InsuranceCompany: "" });
         } else {
-          tax.push({ ...base, Year, EndDate, InsuranceCompany: "" });
+          tax.push({ ...rec, InsuranceCompany: "" });
         }
       }
     }
