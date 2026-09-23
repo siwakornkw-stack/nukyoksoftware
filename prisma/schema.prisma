@@ -45,6 +45,7 @@ model Tenant {
   RefreshTokens RefreshTokens[] @relation("TenantToRefreshTokens")
   RefreshTokensAdmin RefreshTokensAdmin[] @relation("TenantToRefreshTokensAdmin")
   Vehicles Vehicle[]
+  Assets Asset[]
   @@index([TenantId])
 }
 
@@ -745,4 +746,41 @@ model DebtRecord {
   salesperson String
   @@index([versionId])
   @@index([docNo])
+}
+
+// ======================================================================
+// == ASSETS (equipment register + borrow/return log) ===================
+// ======================================================================
+
+model Asset {
+  AssetId String @id @default(uuid()) @db.VarChar(36)
+  TenantId String @db.VarChar(36)
+  Tenant Tenant @relation(fields: [TenantId], references: [TenantId])
+  Name String
+  Category String
+  Code String?
+  DefaultLocation String?
+  Note String?
+  Inactive Boolean @default(false)
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now())
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  Loans AssetLoan[]
+  @@index([TenantId])
+}
+
+model AssetLoan {
+  AssetLoanId String @id @default(uuid()) @db.VarChar(36)
+  AssetId String @db.VarChar(36)
+  Asset Asset @relation(fields: [AssetId], references: [AssetId])
+  BorrowerName String
+  Location String
+  BorrowedAt DateTime @default(now())
+  ReturnedAt DateTime?
+  Note String?
+  CreatedByUsername String?
+  UpdatedByUsername String?
+  @@index([AssetId])
+  @@index([AssetId, ReturnedAt])
 }

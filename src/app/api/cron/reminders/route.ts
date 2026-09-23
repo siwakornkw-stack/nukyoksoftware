@@ -21,7 +21,19 @@ export async function GET(req: Request) {
 
   const T = DEFAULT_TENANT_ID;
   const now = new Date();
-  const in30 = new Date(now.getTime() + 30 * 86400000);
+
+  // Date-only "today" (UTC midnight of the current Bangkok date), matching how
+  // EndDate/DueDate are stored (see normalizeDate). Comparing at day
+  // granularity keeps the 01:00-Bangkok cron from ever landing on the wrong
+  // side of a date boundary.
+  const today = new Date(
+    `${new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(now)}T00:00:00.000Z`
+  );
+  const in30 = new Date(today.getTime() + 30 * 86400000);
+  const daysLeft = (d: Date) => Math.round((d.getTime() - today.getTime()) / 86400000);
+  const REMIND_DAYS = new Set([30, 7, 3]);
+  // Fire at exactly 30/7/3 days out, then every day once it's actually expired.
+  const shouldRemind = (d: Date) => REMIND_DAYS.has(daysLeft(d)) || daysLeft(d) <= 0;
 
   const vehicleSel = {
     select: {
@@ -31,14 +43,22 @@ export async function GET(req: Request) {
     },
   };
 
-  const [tenant, taxes, cmis, policies, oils, overdue] = await Promise.all([
+  // Unbounded below: once something is overdue it must keep matching every day
+  // (shouldRemind), not just up to 30 days past expiry.
+  const [tenant, taxesRaw, cmisRaw, policiesRaw, oilsRaw, overdue] = await Promise.all([
     prisma.tenant.findUnique({ where: { TenantId: T } }),
-    prisma.tax.findMany({ where: { Vehicle: { TenantId: T }, EndDate: { gte: now, lte: in30 } }, include: { Vehicle: vehicleSel } }),
-    prisma.compulsoryMotorInsuranceVehicle.findMany({ where: { Vehicle: { TenantId: T }, EndDate: { gte: now, lte: in30 } }, include: { Vehicle: vehicleSel } }),
-    prisma.insurancePolicyVehicle.findMany({ where: { Vehicle: { TenantId: T }, EndDate: { gte: now, lte: in30 } }, include: { Vehicle: vehicleSel } }),
-    prisma.drainTheOilVehicle.findMany({ where: { Vehicle: { TenantId: T }, DueDate: { gte: now, lte: in30 } }, include: { Vehicle: vehicleSel } }),
+    prisma.tax.findMany({ where: { Vehicle: { TenantId: T }, EndDate: { lte: in30 } }, include: { Vehicle: vehicleSel } }),
+    prisma.compulsoryMotorInsuranceVehicle.findMany({ where: { Vehicle: { TenantId: T }, EndDate: { lte: in30 } }, include: { Vehicle: vehicleSel } }),
+    prisma.insurancePolicyVehicle.findMany({ where: { Vehicle: { TenantId: T }, EndDate: { lte: in30 } }, include: { Vehicle: vehicleSel } }),
+    prisma.drainTheOilVehicle.findMany({ where: { Vehicle: { TenantId: T }, DueDate: { lte: in30 } }, include: { Vehicle: vehicleSel } }),
     prisma.installmentsVehicle.findMany({ where: { Vehicle: { TenantId: T }, DatePay: null, DueDate: { lt: now } }, include: { Vehicle: vehicleSel } }),
   ]);
+
+  // Only the days that actually match the 30/7/3-then-daily rule.
+  const taxes = taxesRaw.filter((t) => shouldRemind(t.EndDate));
+  const cmis = cmisRaw.filter((c) => shouldRemind(c.EndDate));
+  const policies = policiesRaw.filter((p) => shouldRemind(p.EndDate));
+  const oils = oilsRaw.filter((o) => o.DueDate && shouldRemind(o.DueDate));
 
   const plate = (v: { LicensePlatePrefix: string; LicensePlateSuffix: string }) =>
     `${v.LicensePlatePrefix} ${v.LicensePlateSuffix}`;

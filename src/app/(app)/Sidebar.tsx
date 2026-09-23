@@ -45,6 +45,10 @@ const groups: { title: string | null; items: { href: string; label: string; icon
     items: [{ href: "/fuel", label: "ตรวจบิลน้ำมัน", icon: "⛽" }],
   },
   {
+    title: "สินทรัพย์",
+    items: [{ href: "/assets", label: "ยืม-คืนสินทรัพย์", icon: "📦" }],
+  },
+  {
     title: "หนี้ / วางบิล",
     items: [
       { href: "/debt", label: "แดชบอร์ดหนี้", icon: "🧾" },
