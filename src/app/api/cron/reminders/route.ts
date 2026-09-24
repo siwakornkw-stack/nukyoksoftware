@@ -91,7 +91,7 @@ export async function GET(req: Request) {
     const todayISO = today.toISOString().slice(0, 10);
     const openDebt = await prisma.debtRecord.findMany({
       where: { versionId: debtVersion.id, dueDate: { lt: todayISO }, status: { notIn: DEBT_CLOSED } },
-      select: { docNo: true, customer: true, total: true, dueDate: true, salesperson: true },
+      select: { docNo: true, customer: true, total: true, paid: true, dueDate: true, salesperson: true },
     });
     for (const d of openDebt) {
       const days = Math.round((today.getTime() - Date.parse(`${d.dueDate}T00:00:00Z`)) / 86400000);
@@ -101,8 +101,35 @@ export async function GET(req: Request) {
         title: "หนี้ลูกค้า",
         plate: "",
         lineUserId: null,
-        text: `หนี้ ${d.customer} เอกสาร ${d.docNo} เกินกำหนด ${days} วัน ยอด ${dec(d.total).toLocaleString()} บาท${d.salesperson ? ` (พนักงานขาย ${d.salesperson})` : ""}`,
+        text: `หนี้ ${d.customer} เอกสาร ${d.docNo} เกินกำหนด ${days} วัน ยอดค้าง ${(dec(d.total) - dec(d.paid)).toLocaleString()} บาท${d.salesperson ? ` (พนักงานขาย ${d.salesperson})` : ""}`,
       });
+    }
+
+    // Broken payment promises: the newest follow-up of a document that is still
+    // open, whose promised date has passed. Daily until paid or a new note.
+    const promises = await prisma.debtFollowUp.findMany({
+      where: { promiseDate: { not: null } },
+      orderBy: { createdAt: "desc" },
+      distinct: ["docNo"],
+    });
+    const late = promises.filter((p) => p.promiseDate! < todayISO);
+    if (late.length) {
+      const open = await prisma.debtRecord.findMany({
+        where: { versionId: debtVersion.id, docNo: { in: late.map((p) => p.docNo) }, status: { notIn: DEBT_CLOSED } },
+        select: { docNo: true, total: true, paid: true },
+      });
+      const byDoc = new Map(open.map((r) => [r.docNo, dec(r.total) - dec(r.paid)]));
+      for (const p of late) {
+        const due = byDoc.get(p.docNo);
+        if (due === undefined || due <= 0) continue;
+        reminders.push({
+          key: `debtpromise|${p.id}`,
+          title: "ลูกค้าผิดนัดชำระ",
+          plate: "",
+          lineUserId: null,
+          text: `${p.customer} สัญญาจะชำระเอกสาร ${p.docNo} ภายใน ${p.promiseDate} แต่ยังค้าง ${due.toLocaleString()} บาท`,
+        });
+      }
     }
   }
 

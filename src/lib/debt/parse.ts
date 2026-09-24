@@ -68,6 +68,7 @@ export function parseWorkbook(buf: ArrayBuffer): DebtRecord[] {
       depositRef: String(r[12] ?? "").trim(),
       status: normStatus(r[13]),
       salesperson: String(r[14] ?? "").trim(),
+      paid: 0,
     });
   }
   return out;

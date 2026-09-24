@@ -29,6 +29,7 @@ export interface DebtRecord {
   depositRef: string;
   status: DebtStatus;
   salesperson: string;
+  paid: number; // recorded in the web app for this uploaded version
 }
 
 export interface VersionMeta {
@@ -43,3 +44,5 @@ export interface DataStore {
   currentVersionId: string | null;
   versions: VersionMeta[];
 }
+
+export const PAY_METHODS = ["โอน", "เงินสด", "เช็ค", "อื่นๆ"];

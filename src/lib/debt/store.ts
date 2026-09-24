@@ -19,6 +19,7 @@ type RecordRow = {
   depositRef: string;
   status: string;
   salesperson: string;
+  paid: unknown;
 };
 
 function toRecord(r: RecordRow): DebtRecord {
@@ -38,6 +39,7 @@ function toRecord(r: RecordRow): DebtRecord {
     depositRef: r.depositRef,
     status: r.status as DebtStatus,
     salesperson: r.salesperson,
+    paid: Number(r.paid),
   };
 }
 

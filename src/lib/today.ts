@@ -51,7 +51,7 @@ export async function getToday(): Promise<Today> {
         // dueDate is ISO text, so a string comparison is a date comparison.
         where: { versionId: current.id, dueDate: { lt: todayISO }, status: { notIn: DEBT_CLOSED } },
         _count: true,
-        _sum: { total: true },
+        _sum: { total: true, paid: true },
       })
     : null;
 
@@ -61,7 +61,7 @@ export async function getToday(): Promise<Today> {
       due30: ends.filter((d) => d >= today && d <= in30).length,
     },
     installments: { overdue: inst._count, overdueAmount: dec(inst._sum.Amount) },
-    debt: { overdue: debt?._count ?? 0, overdueAmount: dec(debt?._sum.total) },
+    debt: { overdue: debt?._count ?? 0, overdueAmount: dec(debt?._sum.total) - dec(debt?._sum.paid) },
     fuelSuspect7d,
     loansOverdue,
     oilOverdue: oil.rows.filter((r) => r.status === "overdue").length,

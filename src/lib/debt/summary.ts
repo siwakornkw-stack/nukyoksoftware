@@ -55,29 +55,32 @@ export function computeSummary(records: DebtRecord[], today = new Date()): Summa
     }
 
     if (OUTSTANDING.includes(r.status)) {
-      outstandingAmount += r.total;
+      // Part payments recorded in the web app reduce what is still owed.
+      const due = Math.max(0, r.total - r.paid);
+      collectedAmount += r.total - due;
+      outstandingAmount += due;
       outstandingCount++;
 
       const c = custMap.get(r.customer) ?? { amount: 0, count: 0 };
-      c.amount += r.total;
+      c.amount += due;
       c.count++;
       custMap.set(r.customer, c);
 
       const sp = r.salesperson || "ไม่ระบุ";
       const s = salesMap.get(sp) ?? { amount: 0, count: 0 };
-      s.amount += r.total;
+      s.amount += due;
       s.count++;
       salesMap.set(sp, s);
 
       if (r.dueDate && r.dueDate < todayStr) {
-        overdueAmount += r.total;
+        overdueAmount += due;
         overdueCount++;
         const days = Math.floor(
           (today.getTime() - new Date(r.dueDate).getTime()) / 86400000
         );
         const b = days <= 30 ? "1-30 วัน" : days <= 60 ? "31-60 วัน" : days <= 90 ? "61-90 วัน" : "90+ วัน";
         const ab = aging.get(b) ?? { amount: 0, count: 0 };
-        ab.amount += r.total;
+        ab.amount += due;
         ab.count++;
         aging.set(b, ab);
       }

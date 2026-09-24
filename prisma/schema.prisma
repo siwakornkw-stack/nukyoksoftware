@@ -764,8 +764,40 @@ model DebtRecord {
   depositRef String
   status String // Thai status union: รอวางบิล | วางบิลแล้ว | เปิดบิลแล้ว | ชำระแล้ว | ยกเลิก
   salesperson String
+  // Sum of DebtPayment.amount. Payments belong to one uploaded version, so a
+  // new Excel upload starts every record at 0 again (the file wins).
+  paid Decimal @db.Decimal(16,2) @default(0)
+  payments DebtPayment[]
   @@index([versionId])
   @@index([docNo])
+}
+
+model DebtPayment {
+  id String @id @default(cuid())
+  recordId String
+  record DebtRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  amount Decimal @db.Decimal(16,2)
+  paidAt String // ISO YYYY-MM-DD
+  method String // โอน | เงินสด | เช็ค | อื่นๆ
+  note String @default("")
+  slipUrl String?
+  createdBy String
+  createdAt DateTime @default(now())
+  @@index([recordId])
+}
+
+// Collection log. Keyed by docNo (not a version row) so the history survives
+// a new Excel upload.
+model DebtFollowUp {
+  id String @id @default(cuid())
+  docNo String
+  customer String
+  note String
+  promiseDate String? // ISO YYYY-MM-DD: the customer said they would pay by then
+  createdBy String
+  createdAt DateTime @default(now())
+  @@index([docNo])
+  @@index([promiseDate])
 }
 
 // ======================================================================

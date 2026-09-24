@@ -55,6 +55,7 @@ const EXPORTS: Record<string, (q: URLSearchParams) => Promise<{ name: string; ro
         มูลค่า: r.value,
         VAT: r.vat,
         ยอดรวม: r.total,
+        รับชำระแล้ว: r.paid,
         สถานะ: r.status,
         พนักงานขาย: r.salesperson,
         เกินกำหนดวัน: r.dueDate && Date.parse(r.dueDate) < today.getTime() ? Math.floor((today.getTime() - Date.parse(r.dueDate)) / DAY_MS) : null,
@@ -78,10 +79,12 @@ const EXPORTS: Record<string, (q: URLSearchParams) => Promise<{ name: string; ro
         ครบกำหนด: r.dueDate ?? "",
         โครงการ: r.project,
         ยอดรวม: r.total,
+        ชำระแล้ว: r.paid,
+        คงค้าง: r.total - r.paid,
         สถานะ: r.status,
         เกินกำหนดวัน: overdue(r),
       }));
-    rows.push({ เลขที่เอกสาร: "รวม", วันที่: "", ครบกำหนด: "", โครงการ: `${open.length} รายการ`, ยอดรวม: open.reduce((a, r) => a + r.total, 0), สถานะ: "", เกินกำหนดวัน: null });
+    rows.push({ เลขที่เอกสาร: "รวม", วันที่: "", ครบกำหนด: "", โครงการ: `${open.length} รายการ`, ยอดรวม: open.reduce((a, r) => a + r.total, 0), ชำระแล้ว: open.reduce((a, r) => a + r.paid, 0), คงค้าง: open.reduce((a, r) => a + r.total - r.paid, 0), สถานะ: "", เกินกำหนดวัน: null });
     return { name: `statement-${customer || "unknown"}`, rows };
   },
 
