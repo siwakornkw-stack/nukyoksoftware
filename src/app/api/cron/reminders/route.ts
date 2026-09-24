@@ -3,6 +3,7 @@ import * as line from "@line/bot-sdk";
 import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { dec } from "@/lib/fleet/queries";
+import { bangkokToday, shouldRemind as remindOn } from "@/lib/fleet/schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -24,17 +25,10 @@ export async function GET(req: Request) {
   const T = DEFAULT_TENANT_ID;
   const now = new Date();
 
-  // Date-only "today" (UTC midnight of the current Bangkok date), matching how
-  // EndDate/DueDate are stored (see normalizeDate). Comparing at day
-  // granularity keeps the 01:00-Bangkok cron from ever landing on the wrong
-  // side of a date boundary.
-  const today = new Date(
-    `${new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(now)}T00:00:00.000Z`
-  );
-  const daysLeft = (d: Date) => Math.round((d.getTime() - today.getTime()) / 86400000);
-  const REMIND_DAYS = new Set([30, 7, 3]);
-  // Fire at exactly 30/7/3 days out, then every day once it's actually expired.
-  const shouldRemind = (d: Date) => REMIND_DAYS.has(daysLeft(d)) || daysLeft(d) <= 0;
+  // Comparing at day granularity keeps the 01:00-Bangkok cron from ever landing
+  // on the wrong side of a date boundary.
+  const today = bangkokToday(now);
+  const shouldRemind = (d: Date) => remindOn(d, today);
 
   const vehicleSel = {
     select: {

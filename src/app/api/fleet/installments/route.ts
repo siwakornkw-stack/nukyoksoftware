@@ -7,6 +7,7 @@ import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { dec } from "@/lib/fleet/queries";
 import { put } from "@/lib/storage";
 import { audit } from "@/lib/audit";
+import { installmentDueDates } from "@/lib/fleet/schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -134,24 +135,15 @@ export async function POST(req: Request) {
     }
     const start = body.startDate ? new Date(str(body.startDate)) : new Date();
     if (isNaN(start.getTime())) return NextResponse.json({ error: "วันที่งวดแรกไม่ถูกต้อง" }, { status: 400 });
-    const anchorDay = start.getUTCDate();
     const amount = Number(v.InstallmentAmount);
-    const data = Array.from({ length: v.InstallmentPeriods }, (_, idx) => {
-      const y = start.getUTCFullYear();
-      const mo = start.getUTCMonth() + idx;
-      // Clamp the day to the target month's length so a 29-31 anchor does not
-      // roll forward into the following month.
-      const lastDay = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
-      const day = Math.min(anchorDay, lastDay);
-      return {
-        VehicleId: vehicleId,
-        Status: "active",
-        InstallmentNumber: idx + 1,
-        DueDate: new Date(Date.UTC(y, mo, day)),
-        Amount: amount,
-        CreatedByUsername: session.username,
-      };
-    });
+    const data = installmentDueDates(start, v.InstallmentPeriods).map((DueDate, idx) => ({
+      VehicleId: vehicleId,
+      Status: "active",
+      InstallmentNumber: idx + 1,
+      DueDate,
+      Amount: amount,
+      CreatedByUsername: session.username,
+    }));
     try {
       await prisma.installmentsVehicle.createMany({ data });
     } catch (e) {
