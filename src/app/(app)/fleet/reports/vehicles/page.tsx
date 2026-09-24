@@ -23,7 +23,15 @@ export default async function VehiclePnlPage({ searchParams }: { searchParams: P
 
   return (
     <div className="max-w-6xl">
-      <PageHeader title="กำไร / ต้นทุนรายคัน" subtitle={`ปี ${year + 543} · เรียงจากขาดทุนมากที่สุด`} />
+      <PageHeader
+        title="กำไร / ต้นทุนรายคัน"
+        subtitle={`ปี ${year + 543} · เรียงจากขาดทุนมากที่สุด`}
+        action={
+          <a href={`/api/export/vehicle-pnl?year=${year}`} className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">
+            ส่งออก Excel
+          </a>
+        }
+      />
 
       <div className="flex gap-2 mb-4">
         {[thisYear - 2, thisYear - 1, thisYear].map((yy) => (

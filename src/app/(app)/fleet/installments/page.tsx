@@ -94,6 +94,11 @@ function InstallmentsInner() {
       <PageHeader
         title="ค่างวด / ลูกหนี้"
         subtitle={vehicle ? "กรองเฉพาะรถที่เลือก" : `รวม ${baht(total)}`}
+        action={
+          <a href="/api/export/installments" className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">
+            ส่งออก Excel
+          </a>
+        }
       />
 
       {vehicle && (

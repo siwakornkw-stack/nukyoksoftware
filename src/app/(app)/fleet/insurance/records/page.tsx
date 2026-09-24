@@ -70,6 +70,9 @@ export default async function InsuranceRecordsPage({ searchParams }: { searchPar
         subtitle={`${rows.length} รายการ · เบี้ยรวม ${baht(premium)}`}
         action={
           <div className="flex flex-wrap gap-2">
+            <a href="/api/export/insurance" className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">
+              ส่งออก Excel
+            </a>
             <Link href="/fleet/insurance" className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">
               รายงาน
             </Link>

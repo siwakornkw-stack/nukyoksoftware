@@ -60,7 +60,15 @@ export default function RecordsPage() {
 
   return (
     <div className="max-w-7xl">
-      <PageHeader title="รายการหนี้" subtitle={`${filtered.length} รายการ`} />
+      <PageHeader
+        title="รายการหนี้"
+        subtitle={`${filtered.length} รายการ`}
+        action={
+          <a href="/api/export/debt" className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">
+            ส่งออก Excel
+          </a>
+        }
+      />
 
       <Card className="mb-4">
         <div className="flex flex-wrap gap-3">

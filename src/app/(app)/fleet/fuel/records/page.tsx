@@ -65,6 +65,12 @@ export default async function FuelRecordsPage({ searchParams }: { searchParams: 
         subtitle={`${rangeText} · ${rows.length} รายการ · ${blocks.length} คัน · ${baht(total)} · ${num(liters, 2)} ลิตร`}
         action={
           <div className="flex flex-wrap gap-2">
+            <a
+              href={`/api/export/fuel?${new URLSearchParams({ from, to, ...(sp.vehicle ? { vehicle: sp.vehicle } : {}), ...(sp.receiver ? { receiver: sp.receiver } : {}) })}`}
+              className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60"
+            >
+              ส่งออก Excel
+            </a>
             <Link
               href={`/fleet/fuel?${new URLSearchParams({ from, to, ...(sp.vehicle ? { vehicle: sp.vehicle } : {}) })}`}
               className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60"
