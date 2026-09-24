@@ -9,6 +9,7 @@ import { KIND_LABEL, STATUS_LABEL, loadInsuranceRecords } from "@/lib/fleet/insu
 import { loadFuelRecords, fuelFilterOptions, resolveRange } from "@/lib/fleet/fuel-report";
 import { vehiclePnl } from "@/lib/fleet/vehicle-pnl";
 import { DEBT_CLOSED } from "@/lib/today";
+import { driverMonth } from "@/lib/fleet/driver-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -147,6 +148,16 @@ const EXPORTS: Record<string, (q: URLSearchParams) => Promise<{ name: string; ro
         ต้นทุนรวม: r.expense,
         สุทธิ: r.net,
       })),
+    };
+  },
+
+  async "driver-month"(q) {
+    const m = q.get("month") ?? "";
+    const month = /^\d{4}-\d{2}$/.test(m) ? m : bkkToday().toISOString().slice(0, 7);
+    const rows = await driverMonth(month);
+    return {
+      name: `drivers-${month}`,
+      rows: rows.map((r) => ({ คนขับ: r.name, จำนวนงาน: r.jobs, ยอดค่างาน: r.amount, วางบิลแล้ว: r.billed })),
     };
   },
 };

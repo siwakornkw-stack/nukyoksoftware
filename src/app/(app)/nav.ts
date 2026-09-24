@@ -19,6 +19,7 @@ export const groups: NavGroup[] = [
       { href: "/fleet", label: "แดชบอร์ด", icon: "📊" },
       { href: "/fleet/vehicles", label: "ทะเบียนรถ", icon: "🚚" },
       { href: "/fleet/drivers", label: "คนขับ & งานวิ่ง", icon: "🧑‍✈️" },
+      { href: "/fleet/drivers/summary", label: "สรุปงานคนขับ", icon: "🧮" },
       { href: "/fleet/maintenance", label: "บำรุงรักษา (เลขไมล์)", icon: "🔧" },
       { href: "/fleet/installments", label: "ค่างวด / ลูกหนี้", icon: "💳" },
       { href: "/fleet/import", label: "นำเข้าข้อมูล", icon: "⬆️" },

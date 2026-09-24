@@ -36,21 +36,38 @@ export async function notifyDriverOfJob(jobId: string): Promise<boolean> {
 }
 
 const REPLY = /^(รับงาน|รับ|เสร็จงาน|เสร็จ|ปิดงาน)\s*#?\s*(\d+)$/;
+const LIST = /^(งาน|งานของฉัน|งานวันนี้)$/;
 
-// A driver's "รับ 12" / "เสร็จ 12" in the LINE chat. Returns the reply text, or
-// null when the message is not a job command (the caller handles it otherwise).
+// The driver's open jobs (assigned or accepted), soonest first.
+async function openJobsText(driverId: string): Promise<string> {
+  const jobs = await prisma.driverJob.findMany({
+    where: { TenantId: DEFAULT_TENANT_ID, VehicleDriverId: driverId, Status: { in: ["assigned", "accepted"] } },
+    orderBy: [{ ScheduledAt: { sort: "asc", nulls: "last" } }, { JobNo: "asc" }],
+    take: 10,
+  });
+  if (!jobs.length) return "ตอนนี้ไม่มีงานค้าง";
+  const lines = jobs.map(
+    (j) => `#${j.JobNo} ${j.Origin} → ${j.Destination}${j.ScheduledAt ? ` (${bkk(j.ScheduledAt)})` : ""}${j.Status === "accepted" ? " ✅รับแล้ว" : ""}`,
+  );
+  return [`งานของคุณ ${jobs.length} งาน`, ...lines, "", 'ตอบ "รับ n" หรือ "เสร็จ n"'].join("\n");
+}
+
+// A driver's "รับ 12" / "เสร็จ 12" / "งาน" in the LINE chat. Returns the reply
+// text, or null when the message is not a job command (the caller handles it otherwise).
 export async function handleDriverReply(lineUserId: string | undefined, text: string): Promise<string | null> {
   const m = text.trim().match(REPLY);
-  if (!m) return null;
+  const list = LIST.test(text.trim());
+  if (!m && !list) return null;
   if (!lineUserId) return "ไม่ทราบผู้ส่ง";
-  const accept = m[1].startsWith("รับ");
-  const jobNo = Number(m[2]);
 
   const driver = await prisma.vehicleDriver.findFirst({
     where: { TenantId: DEFAULT_TENANT_ID, LineUserId: lineUserId },
     select: { VehicleDriverId: true, Name: true },
   });
   if (!driver) return "บัญชี LINE นี้ยังไม่ได้ผูกกับคนขับในระบบ แจ้งออฟฟิศพร้อมพิมพ์ id เพื่อดูรหัสของคุณ";
+  if (!m) return openJobsText(driver.VehicleDriverId);
+  const accept = m[1].startsWith("รับ");
+  const jobNo = Number(m[2]);
 
   const job = await prisma.driverJob.findFirst({
     where: { TenantId: DEFAULT_TENANT_ID, JobNo: jobNo, VehicleDriverId: driver.VehicleDriverId },
