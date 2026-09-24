@@ -6,11 +6,14 @@ import { PageHeader, Card, StatCard } from "@/components/ui";
 import { baht, thDate, thDateTime } from "@/lib/format";
 import { dec } from "@/lib/fleet/queries";
 import { StatusButton } from "./StatusButton";
+import { VehicleFiles } from "./VehicleFiles";
+import { getSession, isAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function VehicleDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const session = await getSession();
   const v = await prisma.vehicle.findFirst({
     where: { VehicleId: id, TenantId: DEFAULT_TENANT_ID },
     include: {
@@ -166,6 +169,8 @@ export default async function VehicleDetail({ params }: { params: Promise<{ id: 
           </table>
         </div>
       </Card>
+
+      <VehicleFiles vehicleId={id} admin={!!session && isAdmin(session)} />
     </div>
   );
 }
