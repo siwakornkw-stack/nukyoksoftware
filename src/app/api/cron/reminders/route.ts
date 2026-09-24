@@ -83,6 +83,14 @@ export async function GET(req: Request) {
   for (const i of overdue)
     reminders.push({ key: `inst|${i.InstallmentsVehicleId}`, title: "ค่างวด", plate: plate(i.Vehicle), lineUserId: i.Vehicle.VehicleDriver?.LineUserId ?? null, text: `ค่างวดรถ ${plate(i.Vehicle)} งวดที่ ${i.InstallmentNumber} เกินกำหนด (${day(i.DueDate)}) ยอด ${dec(i.Amount).toLocaleString()} บาท` });
 
+  // Borrowed equipment past its return date: in-app only (borrowers have no LINE id).
+  const lateLoans = await prisma.assetLoan.findMany({
+    where: { Asset: { TenantId: T }, ReturnedAt: null, DueAt: { lt: today } },
+    include: { Asset: { select: { Name: true } } },
+  });
+  for (const l of lateLoans)
+    reminders.push({ key: `loan|${l.AssetLoanId}`, title: "ยืมสินทรัพย์", plate: "", lineUserId: null, text: `${l.Asset.Name} ที่ ${l.BorrowerName} ยืมไป เลยกำหนดคืน (${day(l.DueAt!)})` });
+
   // In-app notifications for every active user. One row per (user, key): a
   // repeat reminder refreshes that row and marks it unread again, so the list
   // shows each issue once instead of growing by a copy every day.

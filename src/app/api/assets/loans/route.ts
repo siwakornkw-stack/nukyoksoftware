@@ -16,10 +16,12 @@ async function ownsLoan(assetLoanId: string): Promise<boolean> {
   return loan?.Asset.TenantId === DEFAULT_TENANT_ID;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   if (!(await getSession())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // ?assetId= narrows to one asset's full history.
+  const assetId = new URL(req.url).searchParams.get("assetId");
   const loans = await prisma.assetLoan.findMany({
-    where: { Asset: { TenantId: DEFAULT_TENANT_ID } },
+    where: { Asset: { TenantId: DEFAULT_TENANT_ID }, ...(assetId ? { AssetId: assetId } : {}) },
     include: { Asset: { select: { Name: true, Category: true } } },
     orderBy: { BorrowedAt: "desc" },
     take: 200,
@@ -45,13 +47,21 @@ export async function POST(req: Request) {
       include: { Loans: { where: { ReturnedAt: null }, take: 1 } },
     });
     if (!asset) return NextResponse.json({ error: "ไม่พบสินทรัพย์นี้" }, { status: 404 });
+    if (asset.Inactive) return NextResponse.json({ error: "สินทรัพย์นี้ปลดระวางแล้ว" }, { status: 400 });
     if (asset.Loans.length) return NextResponse.json({ error: "สินทรัพย์นี้ถูกยืมอยู่" }, { status: 400 });
+    // Optional expected return date (YYYY-MM-DD, stored as UTC midnight like other dates).
+    const due = str(b.dueAt);
+    const DueAt = due ? new Date(`${due}T00:00:00.000Z`) : null;
+    if (due && (!/^\d{4}-\d{2}-\d{2}$/.test(due) || isNaN(DueAt!.getTime()))) {
+      return NextResponse.json({ error: "วันที่กำหนดคืนไม่ถูกต้อง" }, { status: 400 });
+    }
     try {
       const loan = await prisma.assetLoan.create({
         data: {
           AssetId: assetId,
           BorrowerName: borrowerName,
           Location: location,
+          DueAt,
           Note: str(b.note) || null,
           CreatedByUsername: session.username,
         },
