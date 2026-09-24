@@ -12,6 +12,7 @@ const PUBLIC_PREFIXES = [
   "/api/auth",
   "/api/fuel/webhook",
   "/api/cron",
+  "/manifest.webmanifest", // fetched without cookies
 ];
 
 const COOKIE = "dvk_session";

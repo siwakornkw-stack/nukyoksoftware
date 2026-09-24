@@ -41,6 +41,7 @@ export async function completeJob(jobId: string, username: string): Promise<Comp
             VehicleId: vehicleId,
             VehicleDriverId: job.VehicleDriverId,
             DriverJobId: jobId,
+            CustomerName: job.CustomerName,
             Description: `งานวิ่ง #${job.JobNo}: ${job.Origin} → ${job.Destination}`,
             Status: "active",
             SourceLabel: "driver-job",

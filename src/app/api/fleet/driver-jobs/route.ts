@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { notifyDriverOfJob } from "@/lib/fleet/driver-line";
 import { completeJob } from "@/lib/fleet/driver-jobs";
+import { createBill } from "@/lib/fleet/driver-bills";
 
 export const dynamic = "force-dynamic";
 
@@ -74,12 +75,19 @@ export async function POST(req: Request) {
         ScheduledAt: scheduledAt,
         Note: str(b.note) || null,
         Price: price,
+        CustomerName: str(b.customerName) || null,
         Status: driverId ? "assigned" : "pending",
         CreatedByUsername: session.username,
       },
     });
     const lineSent = job.VehicleDriverId ? await notifyDriverOfJob(job.DriverJobId) : false;
     return NextResponse.json({ job: { ...job, Price: price }, lineSent });
+  }
+
+  if (b.action === "bill") {
+    const ids = Array.isArray(b.jobIds) ? b.jobIds.filter((v: unknown): v is string => typeof v === "string") : [];
+    const r = await createBill(ids, session.username);
+    return r.ok ? NextResponse.json(r) : NextResponse.json({ error: r.error }, { status: 400 });
   }
 
   if (!jobId) return NextResponse.json({ error: "ไม่พบงานนี้" }, { status: 400 });

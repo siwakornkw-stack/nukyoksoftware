@@ -19,6 +19,8 @@ interface Job {
   ScheduledAt: string | null;
   Status: string;
   Price: number | null;
+  CustomerName: string | null;
+  BillNo: string | null;
   VehicleDriverId: string | null;
   VehicleDriver: { Name: string } | null;
 }
@@ -31,7 +33,7 @@ const JOB_STATUS: Record<string, string> = {
   cancelled: "ยกเลิก",
 };
 
-const EMPTY_JOB = { origin: "", destination: "", scheduledAt: "", vehicleDriverId: "", vehicleId: "", price: "", note: "" };
+const EMPTY_JOB = { origin: "", destination: "", customerName: "", scheduledAt: "", vehicleDriverId: "", vehicleId: "", price: "", note: "" };
 
 export default function DriversPage() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -42,6 +44,7 @@ export default function DriversPage() {
   const [driverErr, setDriverErr] = useState("");
   const [jobErr, setJobErr] = useState("");
   const [jobMsg, setJobMsg] = useState("");
+  const [picked, setPicked] = useState<string[]>([]);
 
   // Assigning a driver pushes the job to their LINE; say whether that happened.
   async function lineNote(res: Response, assigned: boolean) {
@@ -116,6 +119,23 @@ export default function DriversPage() {
     load();
   }
 
+  // Finished, priced, not yet billed: can go on a billing note.
+  const billable = (j: Job) => j.Status === "done" && !j.BillNo && !!j.CustomerName;
+
+  async function makeBill() {
+    setJobErr("");
+    const res = await fetch("/api/fleet/driver-jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "bill", jobIds: picked }),
+    });
+    if (!res.ok) return setJobErr(await errorOf(res, "ออกใบวางบิลไม่สำเร็จ"));
+    const d = await res.json();
+    setPicked([]);
+    load();
+    window.open(`/print/bills/${encodeURIComponent(d.billNo)}`, "_blank");
+  }
+
   return (
     <div className="max-w-6xl">
       <PageHeader title="คนขับ & งานวิ่ง" subtitle={`${drivers.length} คนขับ · ${jobs.length} งาน`} />
@@ -152,6 +172,7 @@ export default function DriversPage() {
               <input className="field" placeholder="ต้นทาง *" value={newJob.origin} onChange={(e) => setNewJob({ ...newJob, origin: e.target.value })} required />
               <input className="field" placeholder="ปลายทาง *" value={newJob.destination} onChange={(e) => setNewJob({ ...newJob, destination: e.target.value })} required />
             </div>
+            <input className="field" placeholder="ลูกค้า (สำหรับออกใบวางบิล)" value={newJob.customerName} onChange={(e) => setNewJob({ ...newJob, customerName: e.target.value })} />
             <div className="grid grid-cols-2 gap-2">
               <input type="datetime-local" className="field" value={newJob.scheduledAt} onChange={(e) => setNewJob({ ...newJob, scheduledAt: e.target.value })} />
               <select className="field" value={newJob.vehicleDriverId} onChange={(e) => setNewJob({ ...newJob, vehicleDriverId: e.target.value })}>
@@ -186,13 +207,22 @@ export default function DriversPage() {
       </div>
 
       <Card className="mt-4">
-        <div className="font-medium mb-3">รายการงานวิ่ง</div>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="font-medium">รายการงานวิ่ง</div>
+          {picked.length > 0 && (
+            <button type="button" onClick={makeBill} className="rounded-lg px-3 py-1.5 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium">
+              ออกใบวางบิล ({picked.length} งาน)
+            </button>
+          )}
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-slate-400 border-b border-slate-800">
+                <th className="py-2 pr-2"></th>
                 <th className="py-2 pr-3">#</th>
                 <th className="py-2 pr-3">เส้นทาง</th>
+                <th className="py-2 pr-3">ลูกค้า</th>
                 <th className="py-2 pr-3">กำหนด</th>
                 <th className="py-2 pr-3">คนขับ</th>
                 <th className="py-2 pr-3 text-right">ค่าจ้าง</th>
@@ -203,10 +233,21 @@ export default function DriversPage() {
             <tbody>
               {jobs.map((j) => (
                 <tr key={j.DriverJobId} className="border-b border-slate-800/50">
+                  <td className="py-2 pr-2">
+                    {billable(j) && (
+                      <input
+                        type="checkbox"
+                        aria-label={`เลือกงาน #${j.JobNo}`}
+                        checked={picked.includes(j.DriverJobId)}
+                        onChange={(e) => setPicked((p) => (e.target.checked ? [...p, j.DriverJobId] : p.filter((x) => x !== j.DriverJobId)))}
+                      />
+                    )}
+                  </td>
                   <td className="py-2 pr-3 text-slate-500">{j.JobNo}</td>
                   <td className="py-2 pr-3">
                     {j.Origin} → {j.Destination}
                   </td>
+                  <td className="py-2 pr-3 text-slate-400">{j.CustomerName || "-"}</td>
                   <td className="py-2 pr-3 text-slate-400">{j.ScheduledAt ? thDateTime(j.ScheduledAt) : "-"}</td>
                   <td className="py-2 pr-3">
                     {j.Status === "cancelled" || j.Status === "done" ? (
@@ -227,6 +268,11 @@ export default function DriversPage() {
                   <td className="py-2 pr-3 text-right">{j.Price == null ? "-" : j.Price.toLocaleString()}</td>
                   <td className="py-2 pr-3">
                     <span className="text-xs text-slate-300">{JOB_STATUS[j.Status] ?? j.Status}</span>
+                    {j.BillNo && (
+                      <a href={`/print/bills/${encodeURIComponent(j.BillNo)}`} target="_blank" rel="noreferrer" className="ml-2 text-xs text-sky-400 hover:underline">
+                        {j.BillNo}
+                      </a>
+                    )}
                   </td>
                   <td className="py-2 whitespace-nowrap">
                     {(j.Status === "assigned" || j.Status === "accepted") && (
@@ -250,7 +296,7 @@ export default function DriversPage() {
               ))}
               {!jobs.length && (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-500">
+                  <td colSpan={9} className="py-8 text-center text-slate-500">
                     ยังไม่มีงานวิ่ง
                   </td>
                 </tr>
