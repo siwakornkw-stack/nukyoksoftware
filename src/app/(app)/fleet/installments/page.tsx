@@ -27,7 +27,11 @@ const TABS = [
 function InstallmentsInner() {
   const searchParams = useSearchParams();
   const vehicle = searchParams.get("vehicle") || "";
-  const [filter, setFilter] = useState("unpaid");
+  // ?filter= lets other pages (the home dashboard) link straight to a tab.
+  const [filter, setFilter] = useState(() => {
+    const f = searchParams.get("filter");
+    return f === "overdue" || f === "paid" || f === "all" ? f : "unpaid";
+  });
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState("");
