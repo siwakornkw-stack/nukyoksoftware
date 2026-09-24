@@ -16,9 +16,26 @@ OFFSITE_KEEP_DAYS="${OFFSITE_KEEP_DAYS:-90}"
 RCLONE="${RCLONE:-$(command -v rclone || echo "$HOME/bin/rclone")}"
 
 log() { echo "$(date '+%F %T') $*"; }
+envval() { grep -E "^$1=" "$APP_DIR/.env" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'"; }
+
+# Tell the app how it went (POST /api/cron/ops): a failure is pushed to the LINE
+# admins and the morning summary shows the last result. Never fails the backup.
+report() { # ok(true|false) message [size] [offsite(true|false)]
+  local secret base
+  secret=$(envval CRON_SECRET || true)
+  base="${REPORT_BASE:-$(envval CRON_BASE_URL || true)}"
+  base="${base:-http://127.0.0.1:3002}"
+  [ -n "$secret" ] || return 0
+  curl -s -m 20 -o /dev/null -X POST "$base/api/cron/ops" \
+    -H "Authorization: Bearer $secret" -H "Content-Type: application/json" \
+    -d "{\"kind\":\"backup\",\"ok\":$1,\"message\":\"$2\",\"size\":${3:-0},\"offsite\":${4:-false}}" \
+    || log "WARN: could not report to the app"
+}
+fail() { log "ERROR: $*"; report false "$*"; exit 1; }
+trap 'fail "unexpected error at line $LINENO"' ERR
 
 url=$(grep -E '^DATABASE_URL=' "$APP_DIR/.env" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
-[ -n "$url" ] || { log "ERROR: DATABASE_URL not found in $APP_DIR/.env"; exit 1; }
+[ -n "$url" ] || fail "DATABASE_URL not found in $APP_DIR/.env"
 url="${url%%\?*}" # pg_dump rejects the ?schema=public suffix
 
 mkdir -p "$BACKUP_DIR"
@@ -29,15 +46,13 @@ tmp="$out.part"
 # half-written dump never looks like a good backup.
 if ! pg_dump --no-owner --no-privileges "$url" | gzip > "$tmp"; then
   rm -f "$tmp"
-  log "ERROR: pg_dump failed"
-  exit 1
+  fail "pg_dump failed"
 fi
 gzip -t "$tmp"
 size=$(stat -c %s "$tmp" 2>/dev/null || wc -c < "$tmp")
 if [ "$size" -lt 1024 ]; then
   rm -f "$tmp"
-  log "ERROR: dump is only $size bytes, not keeping it"
-  exit 1
+  fail "dump is only $size bytes, not keeping it"
 fi
 mv "$tmp" "$out"
 log "OK $out ($size bytes)"
@@ -45,7 +60,9 @@ log "OK $out ($size bytes)"
 find "$BACKUP_DIR" -maxdepth 1 -name 'dhevakij-nightly-*.sql.gz' -mtime +"$KEEP_DAYS" -print -delete | sed "s/^/$(date '+%F %T') removed /"
 
 if [ -n "$OFFSITE" ]; then
-  "$RCLONE" copy "$out" "$OFFSITE" && log "copied to $OFFSITE" || { log "ERROR: offsite copy failed"; exit 1; }
+  "$RCLONE" copy "$out" "$OFFSITE" && log "copied to $OFFSITE" || fail "local backup OK but copy to $OFFSITE failed"
   "$RCLONE" delete "$OFFSITE" --min-age "${OFFSITE_KEEP_DAYS}d" --include 'dhevakij-nightly-*.sql.gz' \
     || log "WARN: offsite prune failed"
 fi
+
+report true "OK" "$size" "$([ -n "$OFFSITE" ] && echo true || echo false)"

@@ -12,6 +12,21 @@ const BASE = process.env.CRON_BASE_URL || process.env.APP_BASE_URL || "http://12
 const SECRET = process.env.CRON_SECRET || "";
 const TZ = "Asia/Bangkok";
 
+// A failed scheduled call is reported back to the app (/api/cron/ops), which
+// alerts the LINE admins. If the app itself is down that report fails too;
+// then only this log has it.
+async function report(pathname, status) {
+  try {
+    await fetch(`${BASE}/api/cron/ops`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${SECRET}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "cron", path: pathname, status }),
+    });
+  } catch (e) {
+    console.error(new Date().toISOString(), "could not report failure:", e?.message || e);
+  }
+}
+
 async function hit(pathname) {
   const at = new Date().toISOString();
   try {
@@ -19,13 +34,18 @@ async function hit(pathname) {
       headers: { Authorization: `Bearer ${SECRET}` },
     });
     console.log(at, pathname, "->", res.status);
+    if (!res.ok) await report(pathname, res.status);
   } catch (e) {
     console.error(at, pathname, "ERR", e?.message || e);
+    await report(pathname, String(e?.message || e));
   }
 }
 
 // Daily 01:00 Bangkok: expiry / overdue LINE reminders (fleet).
 cron.schedule("0 1 * * *", () => hit("/api/cron/reminders"), { timezone: TZ });
+
+// Daily 08:00 Bangkok: morning summary (backup status + what needs attention).
+cron.schedule("0 8 * * *", () => hit("/api/cron/daily-summary"), { timezone: TZ });
 
 // Monthly, 1st at 01:00 Bangkok: fuel monthly report to LINE admins.
 cron.schedule("0 1 1 * *", () => hit("/api/cron/fuel-monthly"), { timezone: TZ });

@@ -106,6 +106,10 @@ model Customer {
   IsOnline Boolean?
   LatestOnline DateTime?
   PasswordHash String
+  // Two-step login (TOTP authenticator app). Secret is set during enrolment and
+  // only enforced once TotpEnabled is true.
+  TotpSecret String? @db.VarChar(64)
+  TotpEnabled Boolean @default(false)
   RefreshTokens RefreshTokens[] @relation("CustomerToRefreshTokens")
   Notifications Notification[]
   @@index([TenantId])
@@ -360,6 +364,7 @@ model DriverJob {
   ScheduledAt DateTime?
   Note String?
   Status String @db.VarChar(15) @default("pending")
+  Price Decimal? @db.Decimal(10,2) // job fare; recorded as income when the job is done
   RespondedAt DateTime?
   CreatedByUsername String?
   CreatedAt DateTime @default(now())
@@ -647,6 +652,8 @@ model IncomeVehicle {
   VehicleDriverId String? @db.VarChar(36)
   PaymentStatus PaymentStatus? @relation(fields: [PaymentStatusId], references: [PaymentStatusId])
   PaymentStatusId String? @db.VarChar(36)
+  // Set when the income was created from a finished driver job (one per job).
+  DriverJobId String? @unique @db.VarChar(36)
   @@index([VehicleId])
   @@index([IncomeVehicleId])
   @@index([TenantId])
