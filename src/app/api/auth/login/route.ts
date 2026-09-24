@@ -20,6 +20,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 });
   }
 
+  await prisma.customer.update({ where: { CustomerId: user.CustomerId }, data: { LatestLogin: new Date() } });
+
   const token = signToken({
     sub: user.CustomerId,
     username: user.Username,

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const groups: { title: string | null; items: { href: string; label: string; icon: string }[] }[] = [
+const groups: { title: string | null; items: { href: string; label: string; icon: string; adminOnly?: boolean }[] }[] = [
   {
     title: null,
     items: [
@@ -57,6 +57,13 @@ const groups: { title: string | null; items: { href: string; label: string; icon
       { href: "/debt/upload", label: "อัปโหลด Excel", icon: "⬆️" },
     ],
   },
+  {
+    title: "ตั้งค่า",
+    items: [
+      { href: "/account", label: "บัญชีของฉัน", icon: "🔑" },
+      { href: "/settings/users", label: "ผู้ใช้งาน", icon: "👥", adminOnly: true },
+    ],
+  },
 ];
 
 const ALL_HREFS = groups.flatMap((g) => g.items.map((i) => i.href));
@@ -92,7 +99,7 @@ function Brand() {
   );
 }
 
-function NavLinks({ pathname, onNavigate, unread }: { pathname: string; onNavigate?: () => void; unread: number }) {
+function NavLinks({ pathname, onNavigate, unread, role }: { pathname: string; onNavigate?: () => void; unread: number; role?: string }) {
   const current = activeHref(pathname);
   return (
     <nav className="flex flex-col gap-4 overflow-y-auto">
@@ -103,7 +110,7 @@ function NavLinks({ pathname, onNavigate, unread }: { pathname: string; onNaviga
               {g.title}
             </div>
           )}
-          {g.items.map((n) => {
+          {g.items.filter((n) => !n.adminOnly || role === "admin").map((n) => {
             const active = n.href === current;
             return (
               <Link
@@ -178,7 +185,7 @@ export function Sidebar({ userName, role }: { userName: string; role?: string })
         <div className="mb-5 px-2">
           <Brand />
         </div>
-        <NavLinks pathname={pathname} unread={unread} />
+        <NavLinks pathname={pathname} unread={unread} role={role} />
         <div className="mt-auto pt-4 border-t border-slate-800/60">
           <UserBlock userName={userName} role={role} />
         </div>
@@ -216,7 +223,7 @@ export function Sidebar({ userName, role }: { userName: string; role?: string })
                 ✕
               </button>
             </div>
-            <NavLinks pathname={pathname} unread={unread} onNavigate={() => setOpen(false)} />
+            <NavLinks pathname={pathname} unread={unread} role={role} onNavigate={() => setOpen(false)} />
             <div className="mt-auto pt-4 border-t border-slate-800/60">
               <UserBlock userName={userName} role={role} />
             </div>

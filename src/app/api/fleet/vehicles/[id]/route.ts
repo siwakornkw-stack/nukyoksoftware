@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { getSession, isAdmin } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
@@ -64,6 +64,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!isAdmin(session)) return NextResponse.json({ error: "เฉพาะผู้ดูแลระบบ" }, { status: 403 });
   const { id } = await ctx.params;
   if (!(await ownedVehicle(id))) return NextResponse.json({ error: "not found" }, { status: 404 });
   // Soft delete: keep child records (FK) intact, mark inactive.

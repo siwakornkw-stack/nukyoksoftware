@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getSession, isAdmin } from "@/lib/auth";
 import { readVersions, setCurrentVersion } from "@/lib/debt/store";
 
 export const dynamic = "force-dynamic";
@@ -12,9 +12,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  if (!(await getSession())) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!isAdmin(s)) return NextResponse.json({ error: "เฉพาะผู้ดูแลระบบ" }, { status: 403 });
   const { id } = await req.json().catch(() => ({}));
   if (typeof id !== "string" || !id) return NextResponse.json({ error: "missing id" }, { status: 400 });
   const ok = await setCurrentVersion(id);

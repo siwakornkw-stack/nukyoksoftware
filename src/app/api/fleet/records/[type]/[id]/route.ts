@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getSession, isAdmin } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { getRecordType } from "@/lib/fleet/record-types";
@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 export async function DELETE(_req: Request, ctx: { params: Promise<{ type: string; id: string }> }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!isAdmin(session)) return NextResponse.json({ error: "เฉพาะผู้ดูแลระบบ" }, { status: 403 });
 
   const { type, id } = await ctx.params;
   const def = getRecordType(type);

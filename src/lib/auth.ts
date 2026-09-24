@@ -4,6 +4,7 @@ import "server-only";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
+import { prisma } from "@/lib/db";
 
 // Unified app auth (JWT in an httpOnly cookie) shared by all three modules.
 // Fail closed in production if the secret is unset; only fall back in dev so a
@@ -68,8 +69,19 @@ export async function clearSessionCookie(): Promise<void> {
 export async function getSession(): Promise<Session | null> {
   const c = await cookies();
   const token = c.get(COOKIE)?.value;
-  return token ? verifyToken(token) : null;
+  const s = token ? verifyToken(token) : null;
+  if (!s) return null;
+  // The token lives 7 days; re-read the user so deactivating an account or
+  // changing its role takes effect on the next request, not at expiry.
+  const user = await prisma.customer.findUnique({
+    where: { CustomerId: s.sub },
+    select: { Status: true, Role: true, Name: true },
+  });
+  if (!user || user.Status !== "active") return null;
+  return { ...s, role: user.Role, name: user.Name ?? undefined };
 }
+
+export const isAdmin = (s: Session) => s.role === "admin";
 
 // Guard for server components / route handlers.
 export async function requireSession(): Promise<Session> {

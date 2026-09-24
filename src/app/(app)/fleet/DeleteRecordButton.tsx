@@ -14,7 +14,7 @@ export function DeleteRecordButton({ type, id, what }: { type: string; id: strin
     const res = await fetch(`/api/fleet/records/${type}/${id}`, { method: "DELETE" });
     setBusy(false);
     if (res.ok) router.refresh();
-    else alert("ลบไม่สำเร็จ");
+    else alert((await res.json().catch(() => ({}))).error || "ลบไม่สำเร็จ");
   }
 
   return (

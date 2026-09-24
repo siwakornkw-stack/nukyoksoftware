@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
-import { getSession } from "@/lib/auth";
+import { getSession, isAdmin } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { getMasterType } from "@/lib/fleet/master-types";
 import { getDelegate } from "@/lib/fleet/master-delegates";
@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 export async function DELETE(_req: Request, ctx: { params: Promise<{ type: string; id: string }> }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!isAdmin(session)) return NextResponse.json({ error: "เฉพาะผู้ดูแลระบบ" }, { status: 403 });
 
   const { type, id } = await ctx.params;
   const def = getMasterType(type);
