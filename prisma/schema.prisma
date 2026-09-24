@@ -225,6 +225,7 @@ model Vehicle {
   // Oil change every N units of this vehicle meter (km, or hours for machinery).
   // Null = the global default (AppSetting oil_interval_km).
   OilInterval Int?
+  MonthlyBudget Decimal? @db.Decimal(12,2) // fuel + repairs per month; null = no budget
   Note String?
   Img String?
   CreatedAt DateTime @default(now())
@@ -511,6 +512,7 @@ model CarTires {
   ChangeDate DateTime
   Position String
   Brand String
+  Odometer Int? // meter reading at the change; drives the distance-based reminder
   CreatedAt DateTime @default(now())
   UpdatedAt DateTime @default(now())
   CreatedByUsername String?

@@ -24,6 +24,7 @@ export const groups: NavGroup[] = [
       { href: "/fleet/import", label: "นำเข้าข้อมูล", icon: "⬆️" },
       { href: "/fleet/reports", label: "รายงาน", icon: "📈" },
       { href: "/fleet/reports/vehicles", label: "กำไร/ต้นทุนรายคัน", icon: "⚖️" },
+      { href: "/fleet/budget", label: "งบรายเดือนต่อคัน", icon: "🎯" },
       { href: "/fleet/master", label: "ข้อมูลหลัก", icon: "🗂️" },
     ],
   },

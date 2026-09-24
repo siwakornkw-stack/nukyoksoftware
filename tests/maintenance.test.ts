@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { oilDue } from "@/lib/fleet/maintenance";
+import { oilDue, tireDue } from "@/lib/fleet/maintenance";
 
 const now = new Date("2026-09-24T00:00:00Z");
 const daysAgo = (n: number) => new Date(now.getTime() - n * 86400000);
@@ -37,5 +37,22 @@ describe("oilDue", () => {
     const r = oilDue([{ at: daysAgo(200), km: 50000 }, { at: daysAgo(0), km: 52000 }], 50000, 10000, now);
     expect(r.remainingKm).toBe(8000);
     expect(r.dueDate).toBeNull();
+  });
+});
+
+describe("tireDue", () => {
+  const monthsAgo = (m: number) => daysAgo(Math.round(m * 30.44));
+
+  it("is due by age or by distance, whichever comes first", () => {
+    expect(tireDue(monthsAgo(6), 10000, 20000, 24, 50000, now).status).toBe("ok");
+    expect(tireDue(monthsAgo(23.5), 10000, 20000, 24, 50000, now).status).toBe("soon");
+    expect(tireDue(monthsAgo(25), 10000, 20000, 24, 50000, now)).toMatchObject({ status: "overdue", reason: "อายุ 25 เดือน" });
+    expect(tireDue(monthsAgo(6), 10000, 56000, 24, 50000, now)).toMatchObject({ status: "soon", sinceKm: 46000 });
+    expect(tireDue(monthsAgo(6), 10000, 61000, 24, 50000, now)).toMatchObject({ status: "overdue", reason: "ใช้งาน 51,000 กม." });
+  });
+
+  it("falls back to age alone without an odometer at the change", () => {
+    expect(tireDue(monthsAgo(6), null, 99999, 24, 50000, now)).toMatchObject({ status: "ok", sinceKm: null });
+    expect(tireDue(monthsAgo(6), 0, 99999, 24, 50000, now).sinceKm).toBeNull();
   });
 });

@@ -61,6 +61,9 @@ export default async function Home() {
         <Tile href="/debt/records" icon="🧾" label="หนี้ลูกค้าเกินกำหนด" value={`${num(t.debt.overdue)} รายการ`} sub={baht(t.debt.overdueAmount)} alert={t.debt.overdue > 0} />
         <Tile href="/fuel" icon="⛽" label="บิลน้ำมันน่าสงสัย (7 วัน)" value={`${num(t.fuelSuspect7d)} ใบ`} alert={t.fuelSuspect7d > 0} />
         <Tile href="/fleet/maintenance" icon="🔧" label="น้ำมันเครื่องเกินระยะ" value={`${num(t.oilOverdue)} คัน`} alert={t.oilOverdue > 0} />
+        <Tile href="/fleet/maintenance" icon="🛞" label="ยางครบกำหนดเปลี่ยน" value={`${num(t.tiresOverdue)} เส้น`} alert={t.tiresOverdue > 0} />
+        <Tile href="/fleet/maintenance" icon="🏭" label="รถอยู่อู่วันนี้" value={`${num(t.inShop)} คัน`} alert={false} />
+        <Tile href="/fleet/budget" icon="🎯" label="รถใช้เกินงบเดือนนี้" value={`${num(t.overBudget)} คัน`} alert={t.overBudget > 0} />
         <Tile href="/assets" icon="📦" label="สินทรัพย์เลยกำหนดคืน" value={`${num(t.loansOverdue)} ชิ้น`} alert={t.loansOverdue > 0} />
         {admin && (
           <Tile

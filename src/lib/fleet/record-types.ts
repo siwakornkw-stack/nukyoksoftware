@@ -109,6 +109,7 @@ export const RECORD_TYPES: RecordTypeDef[] = [
       { name: "ChangeDate", label: "วันเปลี่ยน", type: "date" },
       { name: "Position", label: "ตำแหน่ง", type: "text" },
       { name: "Brand", label: "ยี่ห้อ", type: "text" },
+      { name: "Odometer", label: "เลขไมล์ตอนเปลี่ยน", type: "number", optional: true },
     ],
   },
   {

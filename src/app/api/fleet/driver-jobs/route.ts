@@ -5,6 +5,7 @@ import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { notifyDriverOfJob } from "@/lib/fleet/driver-line";
 import { completeJob } from "@/lib/fleet/driver-jobs";
 import { createBill } from "@/lib/fleet/driver-bills";
+import { isInShop } from "@/lib/fleet/repair";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +56,7 @@ export async function POST(req: Request) {
     if (scheduledAt && isNaN(scheduledAt.getTime())) return NextResponse.json({ error: "วันเวลาไม่ถูกต้อง" }, { status: 400 });
     const vehicleId = str(b.vehicleId) || null;
     if (vehicleId && !(await ownsVehicle(vehicleId))) return NextResponse.json({ error: "ไม่พบรถคันนี้" }, { status: 400 });
+    if (vehicleId && (await isInShop(vehicleId))) return NextResponse.json({ error: "รถคันนี้อยู่อู่ (ดูวันรับรถในบันทึกซ่อม)" }, { status: 400 });
     const priceText = str(String(b.price ?? ""));
     const price = priceText ? Number(priceText) : null;
     if (price != null && (!Number.isFinite(price) || price < 0)) return NextResponse.json({ error: "ค่าจ้างไม่ถูกต้อง" }, { status: 400 });
@@ -94,6 +96,10 @@ export async function POST(req: Request) {
   if (!(await ownsJob(jobId))) return NextResponse.json({ error: "ไม่พบงานนี้" }, { status: 404 });
 
   if (b.action === "assign") {
+    const job = await prisma.driverJob.findUnique({ where: { DriverJobId: jobId }, select: { VehicleId: true } });
+    if (driverId && job?.VehicleId && (await isInShop(job.VehicleId))) {
+      return NextResponse.json({ error: "รถของงานนี้อยู่อู่ (ดูวันรับรถในบันทึกซ่อม)" }, { status: 400 });
+    }
     // An empty driver means "take the assignment back" — the picker offers that
     // as its first option, so it has to be a valid value, not a 400.
     await prisma.driverJob.update({

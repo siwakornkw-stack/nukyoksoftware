@@ -33,6 +33,7 @@ export async function GET(req: Request) {
     `หนี้ลูกค้าเกินกำหนด: ${t.debt.overdue} รายการ (${baht(t.debt.overdueAmount)} บาท)`,
     `บิลน้ำมันน่าสงสัย 7 วัน: ${t.fuelSuspect7d}`,
     `น้ำมันเครื่องเกินระยะ: ${t.oilOverdue} คัน`,
+    `ยางครบกำหนด: ${t.tiresOverdue} เส้น · รถอยู่อู่: ${t.inShop} คัน · เกินงบเดือนนี้: ${t.overBudget} คัน`,
     `สินทรัพย์เลยกำหนดคืน: ${t.loansOverdue}`,
   ].join("\n");
 

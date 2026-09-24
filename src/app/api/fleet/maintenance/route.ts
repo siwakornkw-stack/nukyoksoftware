@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession, isAdmin } from "@/lib/auth";
-import { getOilIntervalKm, setOilIntervalKm, setVehicleOilInterval } from "@/lib/fleet/maintenance";
+import { getOilIntervalKm, getTireIntervals, setOilIntervalKm, setTireIntervals, setVehicleOilInterval } from "@/lib/fleet/maintenance";
 import { audit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 // Admin: oil-change interval.
 //   {"intervalKm": 10000}                       default for every vehicle
 //   {"vehicleId": "...", "interval": 250|null}  one vehicle (its meter unit); null = default
+//   {"tireMonths": 24, "tireKm": 50000}         tire change limits
 export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -21,6 +22,18 @@ export async function POST(req: Request) {
     }
     await setVehicleOilInterval(b.vehicleId, interval);
     await audit("vehicle", b.vehicleId, "update", s.username, null, { OilInterval: interval });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (b.tireMonths !== undefined) {
+    const months = Number(b.tireMonths);
+    const tireKm = Number(b.tireKm);
+    if (!Number.isInteger(months) || months < 1 || months > 120 || !Number.isInteger(tireKm) || tireKm < 1000 || tireKm > 500000) {
+      return NextResponse.json({ error: "อายุ 1 - 120 เดือน, ระยะ 1,000 - 500,000 กม." }, { status: 400 });
+    }
+    const before = await getTireIntervals();
+    await setTireIntervals(months, tireKm);
+    await audit("setting", "tire_interval", "update", s.username, before, { months, km: tireKm });
     return NextResponse.json({ ok: true });
   }
 

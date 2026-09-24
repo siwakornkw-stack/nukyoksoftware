@@ -5,7 +5,9 @@ import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { dec } from "@/lib/fleet/queries";
 import { bangkokToday, shouldRemind as remindOn } from "@/lib/fleet/schedule";
 import { DEBT_CLOSED } from "@/lib/today";
-import { oilStatusAll } from "@/lib/fleet/maintenance";
+import { oilStatusAll, tireStatusAll } from "@/lib/fleet/maintenance";
+import { budgetStatus } from "@/lib/fleet/budget";
+import { addMonths, BASELINE_MONTHS, efficiencyDrops, loadFuelRecords } from "@/lib/fleet/fuel-report";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,7 @@ interface Reminder {
   plate: string;
   text: string;
   lineUserId: string | null;
+  once?: boolean; // notify once; a repeat does not mark it unread again
 }
 
 export async function GET(req: Request) {
@@ -83,6 +86,32 @@ export async function GET(req: Request) {
   const oil = await oilStatusAll();
   for (const r of oil.rows.filter((x) => x.status === "overdue"))
     reminders.push({ key: `oilkm|${r.vehicleId}`, title: "น้ำมันเครื่อง", plate: r.plate, lineUserId: null, text: `รถ ${r.plate} ใช้งานมาแล้ว ${r.sinceKm?.toLocaleString()} (กม./ชม.) เกินระยะเปลี่ยนน้ำมันเครื่อง ${r.interval.toLocaleString()}` });
+
+  // Tires past the age or distance limit: daily, like the oil reminders.
+  const tires = await tireStatusAll();
+  for (const t of tires.rows.filter((x) => x.status === "overdue"))
+    reminders.push({ key: `tire|${t.tireId}`, title: "ยาง", plate: t.plate, lineUserId: null, text: `ยางรถ ${t.plate} ตำแหน่ง ${t.position} ครบกำหนดเปลี่ยน (${t.reason})` });
+
+  // Monthly budget: once at 80% and once at 100% per vehicle and month.
+  const budget = await budgetStatus(today);
+  for (const b of budget.rows) {
+    if (b.pct == null || b.pct < 80) continue;
+    const level = b.pct >= 100 ? 100 : 80;
+    reminders.push({
+      key: `budget|${b.vehicleId}|${budget.month}|${level}`,
+      title: "งบรายเดือน",
+      plate: b.plate,
+      lineUserId: null,
+      once: true,
+      text: `รถ ${b.plate} ใช้ไป ${b.spent.toLocaleString()} บาท (${b.pct}% ของงบ ${b.budget!.toLocaleString()} บาท) เดือนนี้`,
+    });
+  }
+
+  // km/L of last month far below the vehicle's own normal: once per vehicle and month.
+  const lastMonth = addMonths(today.toISOString().slice(0, 7), -1);
+  const fuelHistory = await loadFuelRecords({ from: addMonths(lastMonth, -BASELINE_MONTHS), to: lastMonth });
+  for (const a of efficiencyDrops(fuelHistory, [lastMonth]))
+    reminders.push({ key: `kml|${a.row.vehicleId}|${lastMonth}`, title: "อัตราสิ้นเปลืองผิดปกติ", plate: a.row.plate, lineUserId: null, once: true, text: `รถ ${a.row.plate} กินน้ำมันผิดปกติ ${a.detail}` });
 
   // Customer debt (current BillingNote version) crossing 30/60/90 days overdue:
   // in-app, once per threshold (the morning summary carries the running totals).
@@ -153,7 +182,7 @@ export async function GET(req: Request) {
       await prisma.notification.upsert({
         where: { CustomerId_Key: { CustomerId: u.CustomerId, Key: r.key } },
         create: { CustomerId: u.CustomerId, Key: r.key, Title: r.title, Message: r.text },
-        update: { Title: r.title, Message: r.text, IsRead: false, CreatedTime: now },
+        update: r.once ? {} : { Title: r.title, Message: r.text, IsRead: false, CreatedTime: now },
       });
     }
   }
