@@ -15,7 +15,7 @@ export async function GET() {
   if (!isAdmin(s)) return NextResponse.json({ error: "เฉพาะผู้ดูแลระบบ" }, { status: 403 });
   const users = await prisma.customer.findMany({
     where: { TenantId: DEFAULT_TENANT_ID },
-    select: { CustomerId: true, Username: true, Name: true, Role: true, Status: true, LatestLogin: true, CreatedTime: true },
+    select: { CustomerId: true, Username: true, Name: true, Role: true, Status: true, LatestLogin: true, CreatedTime: true, TotpEnabled: true },
     orderBy: { CreatedTime: "asc" },
   });
   return NextResponse.json({ users });

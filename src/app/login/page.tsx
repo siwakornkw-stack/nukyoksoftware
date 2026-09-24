@@ -7,6 +7,8 @@ export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [needCode, setNeedCode] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -17,7 +19,7 @@ export default function LoginPage() {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, ...(needCode ? { code } : {}) }),
     });
     setLoading(false);
     if (res.ok) {
@@ -25,6 +27,8 @@ export default function LoginPage() {
       router.refresh();
     } else {
       const j = await res.json().catch(() => ({}));
+      // Password was right; the account also wants a code from the authenticator app.
+      if (j.needCode) setNeedCode(true);
       setError(j.error || "เข้าสู่ระบบไม่สำเร็จ");
     }
   }
@@ -56,6 +60,20 @@ export default function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
+        {needCode && (
+          <>
+            <label className="block text-sm mb-1 text-slate-300">รหัสยืนยัน 6 หลัก</label>
+            <input
+              className="field mb-4 tracking-widest"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              autoFocus
+            />
+          </>
+        )}
 
         {error && <div className="mb-3 text-sm text-rose-400">{error}</div>}
 

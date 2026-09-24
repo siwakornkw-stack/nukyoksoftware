@@ -19,7 +19,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const b = (await req.json().catch(() => null)) ?? {};
   if (typeof b !== "object") return NextResponse.json({ error: "ข้อมูลไม่ถูกต้อง" }, { status: 400 });
-  const data: { Role?: string; Status?: string; PasswordHash?: string; UpdatedByUsername: string; UpdatedTime: Date } = {
+  const data: {
+    Role?: string;
+    Status?: string;
+    PasswordHash?: string;
+    TotpEnabled?: boolean;
+    TotpSecret?: null;
+    UpdatedByUsername: string;
+    UpdatedTime: Date;
+  } = {
     UpdatedByUsername: s.username,
     UpdatedTime: new Date(),
   };
@@ -45,6 +53,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
     data.PasswordHash = await hashPassword(b.password);
   }
+  // Lost phone: the user signs in with the password again and re-enrols.
+  if (b.resetTotp === true) {
+    data.TotpEnabled = false;
+    data.TotpSecret = null;
+  }
 
   await prisma.customer.update({ where: { CustomerId: id }, data });
   // Never the hash itself; only that a reset happened.
@@ -54,7 +67,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     "update",
     s.username,
     { Username: user.Username, Role: user.Role, Status: user.Status },
-    { Role: data.Role ?? user.Role, Status: data.Status ?? user.Status, passwordReset: Boolean(data.PasswordHash) }
+    { Role: data.Role ?? user.Role, Status: data.Status ?? user.Status, passwordReset: Boolean(data.PasswordHash), totpReset: b.resetTotp === true }
   );
   return NextResponse.json({ ok: true });
 }

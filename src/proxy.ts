@@ -31,7 +31,11 @@ export function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  // Server layouts cannot see the URL; (app)/layout.tsx reads this to decide
+  // whether an admin without two-step login may view the page.
+  const headers = new Headers(req.headers);
+  headers.set("x-pathname", pathname);
+  return NextResponse.next({ request: { headers } });
 }
 
 export const config = {

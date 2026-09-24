@@ -28,6 +28,9 @@ const ACTION_LABEL: Record<string, string> = {
   deactivate: "เลิกใช้",
   "change-password": "เปลี่ยนรหัสผ่านตัวเอง",
   "assign-vehicle": "ผูกบิลกับรถ",
+  "enable-2fa": "เปิดยืนยัน 2 ขั้น",
+  "disable-2fa": "ปิดยืนยัน 2 ขั้น",
+  done: "ปิดงาน",
 };
 // Bookkeeping columns that change on every edit and say nothing to a reader.
 const NOISE = new Set(["UpdatedAt", "UpdatedByUsername", "UpdatedTime", "CreatedAt", "CreatedByUsername"]);

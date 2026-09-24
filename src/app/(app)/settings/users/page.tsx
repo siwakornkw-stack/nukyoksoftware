@@ -12,6 +12,7 @@ interface User {
   Role: string;
   Status: string;
   LatestLogin: string | null;
+  TotpEnabled: boolean;
 }
 
 const EMPTY = { username: "", name: "", password: "", role: "staff" };
@@ -88,6 +89,7 @@ export default function UsersPage() {
                 <th className="py-2 pr-3">ชื่อ</th>
                 <th className="py-2 pr-3">สิทธิ์</th>
                 <th className="py-2 pr-3">เข้าระบบล่าสุด</th>
+                <th className="py-2 pr-3">2 ขั้น</th>
                 <th className="py-2 pr-3">สถานะ</th>
                 <th className="py-2"></th>
               </tr>
@@ -105,11 +107,20 @@ export default function UsersPage() {
                     </select>
                   </td>
                   <td className="py-2 pr-3 text-slate-400">{u.LatestLogin ? thDateTime(u.LatestLogin) : "-"}</td>
+                  <td className={`py-2 pr-3 ${u.TotpEnabled ? "text-emerald-300" : "text-slate-500"}`}>{u.TotpEnabled ? "เปิด" : "-"}</td>
                   <td className="py-2 pr-3">{u.Status === "active" ? "ใช้งาน" : "ปิดใช้งาน"}</td>
                   <td className="py-2 whitespace-nowrap">
                     <button onClick={() => resetPassword(u)} className="rounded-md px-2 py-1 text-xs bg-slate-800/60 hover:bg-slate-700/60 mr-1">
                       ตั้งรหัสใหม่
                     </button>
+                    {u.TotpEnabled && (
+                      <button
+                        onClick={() => confirm(`รีเซ็ตการยืนยัน 2 ขั้นของ ${u.Username}? (เช่น ทำโทรศัพท์หาย)`) && send(`/api/users/${u.CustomerId}`, "PATCH", { resetTotp: true })}
+                        className="rounded-md px-2 py-1 text-xs bg-slate-800/60 hover:bg-slate-700/60 mr-1"
+                      >
+                        รีเซ็ต 2FA
+                      </button>
+                    )}
                     <button
                       onClick={() => send(`/api/users/${u.CustomerId}`, "PATCH", { status: u.Status === "active" ? "inactive" : "active" })}
                       className="rounded-md px-2 py-1 text-xs bg-slate-800/60 hover:bg-slate-700/60"

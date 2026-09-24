@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { PageHeader, Card } from "@/components/ui";
 import { MIN_PASSWORD } from "@/lib/users";
+import { TwoFactor } from "./TwoFactor";
 
 export default function AccountPage() {
   const [form, setForm] = useState({ current: "", next: "", confirm: "" });
@@ -32,7 +33,7 @@ export default function AccountPage() {
 
   return (
     <div className="max-w-md">
-      <PageHeader title="บัญชีของฉัน" subtitle="เปลี่ยนรหัสผ่าน" />
+      <PageHeader title="บัญชีของฉัน" subtitle="รหัสผ่านและการยืนยันตัวตน 2 ขั้น" />
       <Card>
         <form onSubmit={submit} className="grid gap-2">
           <input type="password" className="field" placeholder="รหัสผ่านปัจจุบัน" autoComplete="current-password" value={form.current} onChange={(e) => setForm({ ...form, current: e.target.value })} required />
@@ -44,6 +45,7 @@ export default function AccountPage() {
           {msg && <div className={`text-sm ${msg.ok ? "text-emerald-300" : "text-rose-400"}`}>{msg.text}</div>}
         </form>
       </Card>
+      <TwoFactor />
     </div>
   );
 }

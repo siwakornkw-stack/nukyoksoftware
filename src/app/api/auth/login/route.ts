@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { verifyPassword, signToken, setSessionCookie, passwordVersion } from "@/lib/auth";
 import { clientIp, loginLimiter } from "@/lib/rate-limit";
+import { verifyTotp } from "@/lib/totp";
 
 export async function POST(req: Request) {
   const b = (await req.json().catch(() => null)) ?? {};
@@ -30,6 +31,17 @@ export async function POST(req: Request) {
   if (!user || !(await verifyPassword(password, user.PasswordHash))) {
     loginLimiter.fail(ip, username);
     return NextResponse.json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 });
+  }
+
+  // Two-step login: the password alone gets no cookie. A wrong code counts as a
+  // failed attempt, so the same throttle covers guessing codes.
+  if (user.TotpEnabled && user.TotpSecret) {
+    const code = typeof b.code === "string" ? b.code : "";
+    if (!code) return NextResponse.json({ needCode: true, error: "กรอกรหัส 6 หลักจากแอปยืนยันตัวตน" }, { status: 401 });
+    if (!verifyTotp(user.TotpSecret, code, user.CustomerId)) {
+      loginLimiter.fail(ip, username);
+      return NextResponse.json({ needCode: true, error: "รหัสยืนยันไม่ถูกต้องหรือหมดเวลา" }, { status: 401 });
+    }
   }
   loginLimiter.succeed(ip, username);
 

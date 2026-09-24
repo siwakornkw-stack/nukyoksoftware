@@ -30,6 +30,7 @@ export interface Session {
   name?: string;
   tenantId: string;
   pv?: string; // password version: see passwordVersion
+  mfa?: boolean; // two-step login enabled (filled in by getSession, not in the token)
 }
 
 // Short fingerprint of the stored bcrypt hash, carried in the token. A new
@@ -84,11 +85,11 @@ export async function getSession(): Promise<Session | null> {
   // changing its role or its password takes effect on the next request.
   const user = await prisma.customer.findUnique({
     where: { CustomerId: s.sub },
-    select: { Status: true, Role: true, Name: true, PasswordHash: true },
+    select: { Status: true, Role: true, Name: true, PasswordHash: true, TotpEnabled: true },
   });
   if (!user || user.Status !== "active") return null;
   if (s.pv !== passwordVersion(user.PasswordHash)) return null;
-  return { ...s, role: user.Role, name: user.Name ?? undefined };
+  return { ...s, role: user.Role, name: user.Name ?? undefined, mfa: user.TotpEnabled };
 }
 
 export const isAdmin = (s: Session) => s.role === "admin";
