@@ -95,6 +95,7 @@ function InstallmentsInner() {
         title="ค่างวด / ลูกหนี้"
         subtitle={vehicle ? "กรองเฉพาะรถที่เลือก" : `รวม ${baht(total)}`}
         action={
+          // eslint-disable-next-line @next/next/no-html-link-for-pages -- file download, not a page
           <a href="/api/export/installments" className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">
             ส่งออก Excel
           </a>
