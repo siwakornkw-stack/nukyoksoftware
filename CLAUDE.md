@@ -94,7 +94,7 @@ Layout:
 1. Locally: `npx tsc --noEmit`, `npm run lint` (baseline 5 warnings), `npm run build`, commit, `git push`.
 2. **Server must equal the last deployed commit** before overwriting: hash `src` + `prisma` from `git archive <last-deployed-sha> src prisma` and from the server tree (per-file `tr -d '\r' | sha1sum`), diff them. Any difference = someone changed the server; stop and investigate.
 3. **Back up the DB** when the deploy has a migration or touches data: on the server, `pg_dump --no-owner --no-privileges "$URL" | gzip > ~/backups/dhevakij-<what>-$(date +%Y%m%d-%H%M%S).sql.gz`, where `URL` is `DATABASE_URL` from `.env` with the `?schema=public` suffix stripped (pg_dump rejects it).
-4. Ship: `git archive HEAD src prisma | ssh -i ~/.ssh/id_88arena_vps ubuntu@15.235.208.118 'tar xf - -C /home/ubuntu/dhevakij'`. Include `prisma`, or new migrations never reach the server. When `package.json`/`package-lock.json` or `deploy/` changed, add them to the archive and run `npm ci` on the server before building.
+4. Ship: `git archive HEAD src prisma | ssh -i ~/.ssh/id_88arena_vps ubuntu@15.235.208.118 'tar xf - -C /home/ubuntu/dhevakij'`. Include `prisma`, or new migrations never reach the server. When `package.json`/`package-lock.json` or `deploy/` changed, add them to the archive and run `npm install --no-audit --no-fund` on the server before building (not `npm ci`: it deletes `node_modules` under the running app). Check the lock hash is unchanged afterwards.
 5. On the server: `npx prisma migrate deploy` (a no-op when nothing is pending).
 6. **Build, and restart only if the build succeeded**: `npm run build > /tmp/dhk-build.log 2>&1 && pm2 restart dhevakij-web dhevakij-cron || tail -30 /tmp/dhk-build.log`. Never pipe the build into `grep`/`head` before `&&`: the pipe swallows the exit code. On 2026-09-22 that restarted PM2 after a failed build. A failed `next build` **deletes `.next`**, so `next start` then serves nothing (outage, `Could not find a production build`) until a build succeeds.
 7. If the build fails at `next/font/google` ("queries have exactly one entry"), it is a transient Google Fonts download failure. Re-run the build; do not change code.
@@ -102,7 +102,7 @@ Layout:
 
 ### Nightly DB backup
 
-`deploy/backup-db.sh` dumps to `~/backups/dhevakij-nightly-*.sql.gz`, keeps 14 days (only `nightly` files rotate, manual pre-deploy dumps stay), refuses empty/failed dumps, and can copy off-machine with `OFFSITE=<rclone remote>`. Install (not done yet as of 2026-09-24): ship `deploy/`, `chmod +x`, run it once by hand, then add to the ubuntu crontab: `30 2 * * * /home/ubuntu/dhevakij/deploy/backup-db.sh >> /home/ubuntu/backups/backup.log 2>&1`. Test locally with a fake `pg_dump` on `PATH` plus `APP_DIR`/`BACKUP_DIR` overrides.
+`deploy/backup-db.sh` dumps to `~/backups/dhevakij-nightly-*.sql.gz`, keeps 14 days (only `nightly` files rotate, manual pre-deploy dumps stay), refuses empty/failed dumps, and can copy off-machine with `OFFSITE=<rclone remote>`. Installed 2026-09-24 in the ubuntu crontab as `30 19 * * *` (server TZ is UTC, so 02:30 Bangkok; the 88arena backup runs at 19:00 UTC). Log: `~/backups/backup.log`. No `OFFSITE` yet, so backups live only on the VPS. Test locally with a fake `pg_dump` on `PATH` plus `APP_DIR`/`BACKUP_DIR` overrides.
 
 ### Loading data into production (bulk imports, one-off fixes)
 
