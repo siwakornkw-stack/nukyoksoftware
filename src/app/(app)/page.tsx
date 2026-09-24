@@ -6,6 +6,7 @@ import { getSession, isAdmin } from "@/lib/auth";
 import { groups } from "./nav";
 import { FinanceChart } from "./fleet/Charts";
 import { monthTrend } from "@/lib/fleet/trend";
+import { bangkokToday } from "@/lib/fleet/schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ function Tile({ href, icon, label, value, sub, alert }: { href: string; icon: st
 // Home: what needs attention today (same numbers as the 08:00 LINE summary),
 // then every sidebar category as a menu.
 export default async function Home() {
-  const thisMonth = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 7);
+  const thisMonth = bangkokToday().toISOString().slice(0, 7);
   const [t, session, trend] = await Promise.all([getToday(), getSession(), monthTrend(thisMonth, 12)]);
   const admin = !!session && isAdmin(session);
   const renewals = t.renewals.expired + t.renewals.due30;
