@@ -32,6 +32,7 @@ export async function GET(req: Request) {
     `ค่างวดเกินกำหนด: ${t.installments.overdue} งวด (${baht(t.installments.overdueAmount)} บาท)`,
     `หนี้ลูกค้าเกินกำหนด: ${t.debt.overdue} รายการ (${baht(t.debt.overdueAmount)} บาท)`,
     `บิลน้ำมันน่าสงสัย 7 วัน: ${t.fuelSuspect7d}`,
+    `น้ำมันเครื่องเกินระยะ: ${t.oilOverdue} คัน`,
     `สินทรัพย์เลยกำหนดคืน: ${t.loansOverdue}`,
   ].join("\n");
 

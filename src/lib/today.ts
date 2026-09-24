@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { dec } from "@/lib/fleet/queries";
 import { bangkokToday } from "@/lib/fleet/schedule";
+import { oilStatusAll } from "@/lib/fleet/maintenance";
 import { BACKUP_MAX_AGE_MS, lastBackupStatus, type BackupStatus } from "@/lib/ops-alert";
 
 // What needs attention today, across modules. Feeds the home dashboard and the
@@ -16,6 +17,7 @@ export interface Today {
   debt: { overdue: number; overdueAmount: number };
   fuelSuspect7d: number;
   loansOverdue: number;
+  oilOverdue: number; // past the km interval since the last oil change
   backup: (BackupStatus & { stale: boolean }) | null;
 }
 
@@ -41,6 +43,7 @@ export async function getToday(): Promise<Today> {
     prisma.assetLoan.count({ where: { Asset: { TenantId: T }, ReturnedAt: null, DueAt: { lt: today } } }),
     lastBackupStatus(),
   ]);
+  const oil = await oilStatusAll();
 
   const ends = [...taxes, ...cmis, ...policies].map((r) => r.EndDate);
   const debt = current
@@ -61,6 +64,7 @@ export async function getToday(): Promise<Today> {
     debt: { overdue: debt?._count ?? 0, overdueAmount: dec(debt?._sum.total) },
     fuelSuspect7d,
     loansOverdue,
+    oilOverdue: oil.rows.filter((r) => r.status === "overdue").length,
     backup: backup ? { ...backup, stale: !backup.ok || Date.now() - Date.parse(backup.at) > BACKUP_MAX_AGE_MS } : null,
   };
 }

@@ -5,6 +5,7 @@ import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { dec } from "@/lib/fleet/queries";
 import { bangkokToday, shouldRemind as remindOn } from "@/lib/fleet/schedule";
 import { DEBT_CLOSED } from "@/lib/today";
+import { oilStatusAll } from "@/lib/fleet/maintenance";
 
 export const dynamic = "force-dynamic";
 
@@ -77,6 +78,11 @@ export async function GET(req: Request) {
     reminders.push({ key: `oil|${o.DrainTheOilVehicleId}`, title: "น้ำมันเครื่อง", plate: plate(o.Vehicle), lineUserId: o.Vehicle.VehicleDriver?.LineUserId ?? null, text: `ถึงกำหนดเปลี่ยนถ่ายน้ำมันเครื่องรถ ${plate(o.Vehicle)} (${o.DueDate ? day(o.DueDate) : "-"})` });
   for (const i of overdue)
     reminders.push({ key: `inst|${i.InstallmentsVehicleId}`, title: "ค่างวด", plate: plate(i.Vehicle), lineUserId: i.Vehicle.VehicleDriver?.LineUserId ?? null, text: `ค่างวดรถ ${plate(i.Vehicle)} งวดที่ ${i.InstallmentNumber} เกินกำหนด (${day(i.DueDate)}) ยอด ${dec(i.Amount).toLocaleString()} บาท` });
+
+  // Oil change by distance: every day while a vehicle is past its interval.
+  const oil = await oilStatusAll();
+  for (const r of oil.rows.filter((x) => x.status === "overdue"))
+    reminders.push({ key: `oilkm|${r.vehicleId}`, title: "น้ำมันเครื่อง", plate: r.plate, lineUserId: null, text: `รถ ${r.plate} ใช้งานมาแล้ว ${r.sinceKm?.toLocaleString()} (กม./ชม.) เกินระยะเปลี่ยนน้ำมันเครื่อง ${r.interval.toLocaleString()}` });
 
   // Customer debt (current BillingNote version) crossing 30/60/90 days overdue:
   // in-app, once per threshold (the morning summary carries the running totals).

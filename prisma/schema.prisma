@@ -222,6 +222,9 @@ model Vehicle {
   VehicleStatusId String? @db.VarChar(36)
   InstallmentPeriods Int?
   InstallmentAmount Decimal? @db.Decimal(10,2)
+  // Oil change every N units of this vehicle meter (km, or hours for machinery).
+  // Null = the global default (AppSetting oil_interval_km).
+  OilInterval Int?
   Note String?
   Img String?
   CreatedAt DateTime @default(now())
