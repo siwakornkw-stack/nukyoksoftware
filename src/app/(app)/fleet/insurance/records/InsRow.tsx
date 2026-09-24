@@ -8,6 +8,7 @@ import type { InsRecord } from "@/lib/fleet/insurance-report";
 import { DeleteRecordButton } from "../../DeleteRecordButton";
 
 const td = "py-2 pr-3";
+const nextYear = (iso: string) => `${Number(iso.slice(0, 4)) + 1}${iso.slice(4)}`;
 
 const toForm = (r: InsRecord) => ({
   Year: String(r.year || ""),
@@ -82,6 +83,22 @@ export function InsRow({
     router.refresh();
   }
 
+  // One click for next year's record: same company/broker/class, dates +1 year.
+  async function renew() {
+    const p = prompt(`ต่ออายุ${label} ${r.plate} ถึง ${thDate(nextYear(r.end))}\nเบี้ยปีใหม่ (บาท):`, String(r.premium || ""));
+    if (p == null) return;
+    setBusy(true);
+    setError("");
+    const res = await fetch(`/api/fleet/records/${recordType}/${r.id}/renew`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ premium: Number(p.replace(/,/g, "")) }),
+    });
+    setBusy(false);
+    if (!res.ok) return setError((await res.json().catch(() => ({}))).error || "ต่ออายุไม่สำเร็จ");
+    router.refresh();
+  }
+
   if (!editing) {
     return (
       <tr className={`border-b border-slate-800/50 ${latest ? "" : "opacity-60"}`}>
@@ -119,7 +136,13 @@ export function InsRow({
           >
             แก้ไข
           </button>
+          {latest && (
+            <button type="button" onClick={renew} disabled={busy} className="text-xs text-emerald-400 hover:text-emerald-300 disabled:opacity-50">
+              ต่ออายุ
+            </button>
+          )}
           <DeleteRecordButton type={recordType} id={r.id} what={label} />
+          {error && <span className="text-xs text-rose-400">{error}</span>}
         </td>
       </tr>
     );
