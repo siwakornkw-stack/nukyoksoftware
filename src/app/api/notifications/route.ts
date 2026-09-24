@@ -21,7 +21,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const b = await req.json().catch(() => ({}));
+  const b = (await req.json().catch(() => null)) ?? {};
 
   if (b.action === "readAll") {
     await prisma.notification.updateMany({ where: { CustomerId: s.sub, IsRead: false }, data: { IsRead: true } });

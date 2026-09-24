@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   if (!s) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const { docNo, status } = await req.json().catch(() => ({}));
+  const { docNo, status } = (await req.json().catch(() => null)) ?? {};
   // docNo must be a string: an object ({ not: "" }) would be a Prisma filter and
   // update every record of the current version.
   if (typeof docNo !== "string" || !docNo || !STATUS_LIST.includes(status)) {

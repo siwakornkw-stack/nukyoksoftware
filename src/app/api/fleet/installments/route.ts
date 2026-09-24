@@ -97,7 +97,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, evidence: evidenceUrl ?? null });
   }
 
-  const body = await req.json().catch(() => ({}));
+  const body = (await req.json().catch(() => null)) ?? {};
   const action = body.action;
   // A JSON object here would reach Prisma as a filter ({ not: "" }), not a value.
   const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");

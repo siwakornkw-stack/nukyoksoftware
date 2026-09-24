@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!isAdmin(s)) return NextResponse.json({ error: "เฉพาะผู้ดูแลระบบ" }, { status: 403 });
-  const b = await req.json().catch(() => ({}));
+  const b = (await req.json().catch(() => null)) ?? {};
   const username = str(b.username);
   const name = str(b.name);
   const password = typeof b.password === "string" ? b.password : "";
@@ -35,7 +35,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `รหัสผ่านต้องยาวอย่างน้อย ${MIN_PASSWORD} ตัวอักษร` }, { status: 400 });
   }
   if (!ROLES.includes(role)) return NextResponse.json({ error: "สิทธิ์ไม่ถูกต้อง" }, { status: 400 });
-  const taken = await prisma.customer.findFirst({ where: { TenantId: DEFAULT_TENANT_ID, Username: username } });
+  // "Admin" next to "admin" would be two accounts that look the same.
+  const taken = await prisma.customer.findFirst({
+    where: { TenantId: DEFAULT_TENANT_ID, Username: { equals: username, mode: "insensitive" } },
+  });
   if (taken) return NextResponse.json({ error: "ชื่อผู้ใช้นี้มีอยู่แล้ว" }, { status: 400 });
 
   const user = await prisma.customer.create({

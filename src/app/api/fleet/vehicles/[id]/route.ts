@@ -35,7 +35,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const { id } = await ctx.params;
   const before = await ownedVehicle(id);
   if (!before) return NextResponse.json({ error: "not found" }, { status: 404 });
-  const b = await req.json().catch(() => ({}));
+  const b = (await req.json().catch(() => null)) ?? {};
   const v = await prisma.vehicle.update({
     where: { VehicleId: id },
     data: {

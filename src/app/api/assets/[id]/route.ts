@@ -16,7 +16,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   });
   if (!asset) return NextResponse.json({ error: "ไม่พบสินทรัพย์นี้" }, { status: 404 });
 
-  const b = await req.json().catch(() => ({}));
+  const b = (await req.json().catch(() => null)) ?? {};
   const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
   const data: Record<string, string | boolean | null> = { UpdatedByUsername: session.username };
 

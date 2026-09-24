@@ -17,7 +17,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const b = await req.json().catch(() => ({}));
+  const b = (await req.json().catch(() => null)) ?? {};
   if (!b.name) return NextResponse.json({ error: "ต้องระบุชื่อคนขับ" }, { status: 400 });
   const driver = await prisma.vehicleDriver.create({
     data: {

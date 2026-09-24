@@ -26,7 +26,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const b = await req.json().catch(() => ({}));
+  const b = (await req.json().catch(() => null)) ?? {};
   if (!b.plateSuffix) {
     return NextResponse.json({ error: "ต้องระบุเลขทะเบียน" }, { status: 400 });
   }

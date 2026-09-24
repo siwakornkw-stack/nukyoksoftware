@@ -26,6 +26,8 @@ const ACTION_LABEL: Record<string, string> = {
   "set-current": "ตั้งเป็นเวอร์ชันปัจจุบัน",
   "generate-installments": "สร้างตารางค่างวด",
   deactivate: "เลิกใช้",
+  "change-password": "เปลี่ยนรหัสผ่านตัวเอง",
+  "assign-vehicle": "ผูกบิลกับรถ",
 };
 // Bookkeeping columns that change on every edit and say nothing to a reader.
 const NOISE = new Set(["UpdatedAt", "UpdatedByUsername", "UpdatedTime", "CreatedAt", "CreatedByUsername"]);

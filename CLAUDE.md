@@ -61,7 +61,8 @@ Layout:
 ## Conventions
 
 - **Auth**: every API handler starts with `const s = await getSession(); if (!s) return NextResponse.json({error:"unauthorized"},{status:401});`. Public (no-auth) routes only: `/api/fuel/webhook`, `/api/cron/*`, `/login`, `/api/auth/*`. `/uploads/*` requires a session (private files).
-- **Roles**: `admin` | `staff` (`Customer.Role`, managed at `/settings/users`). Admin only: deletes (vehicles, per-vehicle records, master data), debt version switch, LINE admin settings, users, audit log. Guard with `if (!isAdmin(s)) return …403`. `getSession` re-reads the user each request, so deactivation/role changes apply immediately.
+- **Roles**: `admin` | `staff` (`Customer.Role`, managed at `/settings/users`). Admin only: deletes (vehicles, per-vehicle records, master data), debt version switch, LINE admin settings, users, audit log. Guard with `if (!isAdmin(s)) return …403`. `getSession` re-reads the user each request, so deactivation/role changes apply immediately, and the token carries `pv` (`passwordVersion` of the bcrypt hash): any password change or admin reset ends all other sessions of that user. `/api/account/password` re-issues the caller cookie.
+- **Request bodies**: read with `(await req.json().catch(() => null)) ?? {}`; a literal `null` body otherwise crashes the handler (500).
 - **Untrusted JSON**: coerce to string before it reaches a Prisma `where` (`typeof v === "string" ? v.trim() : ""`). An object like `{ not: "" }` otherwise acts as a filter (was exploitable on login and debt status).
 - **Races**: "check then create" needs a DB constraint behind it (one open loan per asset: partial unique index in SQL only; one row per installment number: `@@unique`). Catch `P2002` and answer 400.
 - **Notifications**: one row per (user, `Key`) — e.g. `tax|<TaxId>`, `loan|<id>`, `job|<id>`; upsert so a repeat reminder refreshes the row and marks it unread. The cron writes them for every active user.

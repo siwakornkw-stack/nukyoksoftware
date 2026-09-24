@@ -3,6 +3,7 @@
 import "server-only";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import { createHash } from "crypto";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 
@@ -28,6 +29,14 @@ export interface Session {
   role: string; // admin | staff
   name?: string;
   tenantId: string;
+  pv?: string; // password version: see passwordVersion
+}
+
+// Short fingerprint of the stored bcrypt hash, carried in the token. A new
+// password (own change or admin reset) gets a new hash and salt, so every token
+// issued before it stops matching and those sessions end.
+export function passwordVersion(passwordHash: string): string {
+  return createHash("sha256").update(passwordHash).digest("hex").slice(0, 16);
 }
 
 export function hashPassword(pw: string): Promise<string> {
@@ -71,13 +80,14 @@ export async function getSession(): Promise<Session | null> {
   const token = c.get(COOKIE)?.value;
   const s = token ? verifyToken(token) : null;
   if (!s) return null;
-  // The token lives 7 days; re-read the user so deactivating an account or
-  // changing its role takes effect on the next request, not at expiry.
+  // The token lives 7 days; re-read the user so deactivating an account,
+  // changing its role or its password takes effect on the next request.
   const user = await prisma.customer.findUnique({
     where: { CustomerId: s.sub },
-    select: { Status: true, Role: true, Name: true },
+    select: { Status: true, Role: true, Name: true, PasswordHash: true },
   });
   if (!user || user.Status !== "active") return null;
+  if (s.pv !== passwordVersion(user.PasswordHash)) return null;
   return { ...s, role: user.Role, name: user.Name ?? undefined };
 }
 

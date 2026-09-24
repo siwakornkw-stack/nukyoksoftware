@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { reconcileMonth, rematchBills } from "@/lib/fuel/reconcile";
 import { rememberAlias } from "@/lib/fleet/office-import";
+import { audit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const b = await req.json().catch(() => ({}));
+  const b = (await req.json().catch(() => null)) ?? {};
 
   if (b.action === "rematch") return NextResponse.json({ linked: await rematchBills() });
 
@@ -37,6 +38,8 @@ export async function POST(req: Request) {
     if (!vehicle) return NextResponse.json({ error: "ไม่พบรถคันนี้" }, { status: 400 });
     await prisma.fuelBill.update({ where: { id: billId }, data: { VehicleId: vehicleId } });
     if (bill.plate) await rememberAlias(prisma, bill.plate, vehicleId, s.username);
+    // The alias also steers future office imports, so record who set it.
+    await audit("fuel-bill", String(billId), "assign-vehicle", s.username, { VehicleId: bill.VehicleId }, { VehicleId: vehicleId, alias: bill.plate });
     return NextResponse.json({ ok: true });
   }
 

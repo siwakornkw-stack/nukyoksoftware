@@ -31,7 +31,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ type: string }
   const delegate = getDelegate(type);
   if (!def || !delegate) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  const b = await req.json().catch(() => ({}));
+  const b = (await req.json().catch(() => null)) ?? {};
   const name = typeof b.Name === "string" ? b.Name.trim() : "";
   if (!name) return NextResponse.json({ error: "กรุณากรอกชื่อ" }, { status: 400 });
 

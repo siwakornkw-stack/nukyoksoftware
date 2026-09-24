@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!isAdmin(s)) return NextResponse.json({ error: "เฉพาะผู้ดูแลระบบ" }, { status: 403 });
-  const { line_admin_id } = await req.json().catch(() => ({}));
+  const { line_admin_id } = (await req.json().catch(() => null)) ?? {};
   await setLineAdminId(String(line_admin_id ?? "").trim());
   return NextResponse.json({ ok: true });
 }

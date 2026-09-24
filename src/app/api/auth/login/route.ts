@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
-import { verifyPassword, signToken, setSessionCookie } from "@/lib/auth";
+import { verifyPassword, signToken, setSessionCookie, passwordVersion } from "@/lib/auth";
 import { clientIp, loginLimiter } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
-  const b = await req.json().catch(() => ({}));
+  const b = (await req.json().catch(() => null)) ?? {};
   // Strings only: an object username ({ equals: "admin" }) would reach Prisma as a
   // filter and let a password be tried without knowing the account name.
   const username = typeof b.username === "string" ? b.username : "";
@@ -41,6 +41,7 @@ export async function POST(req: Request) {
     role: user.Role,
     name: user.Name ?? undefined,
     tenantId: user.TenantId,
+    pv: passwordVersion(user.PasswordHash),
   });
   await setSessionCookie(token);
   return NextResponse.json({ ok: true });

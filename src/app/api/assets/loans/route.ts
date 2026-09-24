@@ -32,7 +32,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const b = await req.json().catch(() => ({}));
+  const b = (await req.json().catch(() => null)) ?? {};
   const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
   if (b.action === "borrow") {

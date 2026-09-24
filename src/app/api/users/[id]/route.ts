@@ -17,7 +17,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const user = await prisma.customer.findFirst({ where: { CustomerId: id, TenantId: DEFAULT_TENANT_ID } });
   if (!user) return NextResponse.json({ error: "ไม่พบผู้ใช้" }, { status: 404 });
 
-  const b = await req.json().catch(() => ({}));
+  const b = (await req.json().catch(() => null)) ?? {};
+  if (typeof b !== "object") return NextResponse.json({ error: "ข้อมูลไม่ถูกต้อง" }, { status: 400 });
   const data: { Role?: string; Status?: string; PasswordHash?: string; UpdatedByUsername: string; UpdatedTime: Date } = {
     UpdatedByUsername: s.username,
     UpdatedTime: new Date(),
