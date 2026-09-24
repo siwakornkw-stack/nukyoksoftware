@@ -24,6 +24,7 @@ Next.js 16.2.7 (App Router) · React 19 · Tailwind v4 (dark, **no MUI**) · Pri
 npm run dev            # next dev
 npm run build          # prisma generate && next build
 npm run lint           # eslint (flat config)
+npm test               # vitest (tests/*.test.ts; pure logic, no DB)
 npm run prisma:migrate # prisma migrate dev
 npm run db:seed        # tenant + admin/admin1234
 npm run worker         # node-cron worker (hits /api/cron/*)
@@ -44,7 +45,8 @@ Runtime needs PostgreSQL + `.env` (copy `.env.example`). Deploy: `DEPLOY.md`.
 import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";   // scope EVERY tenant-owned query to this
 import { put, get, del, publicUrl } from "@/lib/storage"; // local FS; keys "fuel/2026-07/<uuid>.jpg"
-import { getSession, requireSession } from "@/lib/auth";  // JWT cookie
+import { getSession, requireSession, isAdmin } from "@/lib/auth";  // JWT cookie; session re-reads role/status from DB
+import { audit } from "@/lib/audit";                 // before/after log of money data + user accounts
 import { baht, num, thDate, thDateTime, STATUS_STYLE } from "@/lib/format";
 import { PageHeader, Card, StatCard } from "@/components/ui";
 import { dec } from "@/lib/fleet/queries";          // Prisma Decimal -> number
@@ -59,6 +61,11 @@ Layout:
 ## Conventions
 
 - **Auth**: every API handler starts with `const s = await getSession(); if (!s) return NextResponse.json({error:"unauthorized"},{status:401});`. Public (no-auth) routes only: `/api/fuel/webhook`, `/api/cron/*`, `/login`, `/api/auth/*`. `/uploads/*` requires a session (private files).
+- **Roles**: `admin` | `staff` (`Customer.Role`, managed at `/settings/users`). Admin only: deletes (vehicles, per-vehicle records, master data), debt version switch, LINE admin settings, users, audit log. Guard with `if (!isAdmin(s)) return …403`. `getSession` re-reads the user each request, so deactivation/role changes apply immediately.
+- **Untrusted JSON**: coerce to string before it reaches a Prisma `where` (`typeof v === "string" ? v.trim() : ""`). An object like `{ not: "" }` otherwise acts as a filter (was exploitable on login and debt status).
+- **Races**: "check then create" needs a DB constraint behind it (one open loan per asset: partial unique index in SQL only; one row per installment number: `@@unique`). Catch `P2002` and answer 400.
+- **Notifications**: one row per (user, `Key`) — e.g. `tax|<TaxId>`, `loan|<id>`, `job|<id>`; upsert so a repeat reminder refreshes the row and marks it unread. The cron writes them for every active user.
+- **Audit**: call `audit(entity, id, action, username, before, after)` after money-related or account changes. It never throws.
 - **Tenancy**: multi-tenant schema kept, but this is a single-company install — one seeded tenant `DEFAULT_TENANT_ID`. Always scope by it (fleet child records: `where: { Vehicle: { TenantId: DEFAULT_TENANT_ID } }`).
 - **Auth gate**: `src/proxy.ts` (Next 16 proxy/middleware) redirects unauthenticated navigation to `/login`. `(app)/layout.tsx` also redirects as defense-in-depth. NOTE: the build's `middleware-manifest.json` looks empty but the proxy **does** run (verified at runtime) — don't "fix" it by renaming.
 - **Money**: Prisma `Decimal` everywhere. Read with `dec(x)` / `Number(x)`; write by passing a number. Convert Decimal→number at every API/JSON boundary (Decimal serializes to a string otherwise, breaking client arithmetic).
@@ -87,11 +94,15 @@ Layout:
 1. Locally: `npx tsc --noEmit`, `npm run lint` (baseline 5 warnings), `npm run build`, commit, `git push`.
 2. **Server must equal the last deployed commit** before overwriting: hash `src` + `prisma` from `git archive <last-deployed-sha> src prisma` and from the server tree (per-file `tr -d '\r' | sha1sum`), diff them. Any difference = someone changed the server; stop and investigate.
 3. **Back up the DB** when the deploy has a migration or touches data: on the server, `pg_dump --no-owner --no-privileges "$URL" | gzip > ~/backups/dhevakij-<what>-$(date +%Y%m%d-%H%M%S).sql.gz`, where `URL` is `DATABASE_URL` from `.env` with the `?schema=public` suffix stripped (pg_dump rejects it).
-4. Ship: `git archive HEAD src prisma | ssh -i ~/.ssh/id_88arena_vps ubuntu@15.235.208.118 'tar xf - -C /home/ubuntu/dhevakij'`. Include `prisma`, or new migrations never reach the server.
+4. Ship: `git archive HEAD src prisma | ssh -i ~/.ssh/id_88arena_vps ubuntu@15.235.208.118 'tar xf - -C /home/ubuntu/dhevakij'`. Include `prisma`, or new migrations never reach the server. When `package.json`/`package-lock.json` or `deploy/` changed, add them to the archive and run `npm ci` on the server before building.
 5. On the server: `npx prisma migrate deploy` (a no-op when nothing is pending).
 6. **Build, and restart only if the build succeeded**: `npm run build > /tmp/dhk-build.log 2>&1 && pm2 restart dhevakij-web dhevakij-cron || tail -30 /tmp/dhk-build.log`. Never pipe the build into `grep`/`head` before `&&`: the pipe swallows the exit code. On 2026-09-22 that restarted PM2 after a failed build. A failed `next build` **deletes `.next`**, so `next start` then serves nothing (outage, `Could not find a production build`) until a build succeeds.
 7. If the build fails at `next/font/google` ("queries have exactly one entry"), it is a transient Google Fonts download failure. Re-run the build; do not change code.
 8. Verify: hashes equal HEAD, `curl -s -o /dev/null -w "%{http_code}" http://localhost:3002/login` is 200 (app pages 307 to login), and `pm2 logs dhevakij-web --err --nostream` has nothing newer than the restart. Old `Failed to find Server Action "x"` lines are scanner bots, not us.
+
+### Nightly DB backup
+
+`deploy/backup-db.sh` dumps to `~/backups/dhevakij-nightly-*.sql.gz`, keeps 14 days (only `nightly` files rotate, manual pre-deploy dumps stay), refuses empty/failed dumps, and can copy off-machine with `OFFSITE=<rclone remote>`. Install (not done yet as of 2026-09-24): ship `deploy/`, `chmod +x`, run it once by hand, then add to the ubuntu crontab: `30 2 * * * /home/ubuntu/dhevakij/deploy/backup-db.sh >> /home/ubuntu/backups/backup.log 2>&1`. Test locally with a fake `pg_dump` on `PATH` plus `APP_DIR`/`BACKUP_DIR` overrides.
 
 ### Loading data into production (bulk imports, one-off fixes)
 
