@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { getRecordType } from "@/lib/fleet/record-types";
 import { delegate } from "@/lib/fleet/record-delegates";
 import { parseScalar } from "@/lib/fleet/record-fields";
+import { audit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ type: strin
   }
 
   await delegate(def).delete({ where: { [def.idField]: id } });
+  await audit(`record:${def.key}`, id, "delete", session.username, row, null);
   return NextResponse.json({ ok: true });
 }
 
@@ -80,6 +82,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ type: string;
     data[f.name] = parsed.value;
   }
 
-  await delegate(def).update({ where: { [def.idField]: id }, data });
+  const updated = await delegate(def).update({ where: { [def.idField]: id }, data });
+  await audit(`record:${def.key}`, id, "update", session.username, row, updated);
   return NextResponse.json({ ok: true });
 }

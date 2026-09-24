@@ -7,6 +7,7 @@ import { put } from "@/lib/storage";
 import { parseScalar } from "@/lib/fleet/record-fields";
 import { getRecordType, type RecordTypeDef } from "@/lib/fleet/record-types";
 import { delegate } from "@/lib/fleet/record-delegates";
+import { audit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -122,5 +123,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ type: string }
   }
 
   const row = await delegate(def).create({ data });
+  await audit(`record:${def.key}`, String(row[def.idField]), "create", session.username, null, row);
   return NextResponse.json({ row: withNumericMoney(def, row) }, { status: 201 });
 }

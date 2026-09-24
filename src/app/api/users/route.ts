@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getSession, isAdmin, hashPassword } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { MIN_PASSWORD, ROLES } from "@/lib/users";
+import { audit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -52,5 +53,6 @@ export async function POST(req: Request) {
     },
     select: { CustomerId: true, Username: true },
   });
+  await audit("user", user.CustomerId, "create", s.username, null, { Username: username, Role: role });
   return NextResponse.json({ user }, { status: 201 });
 }

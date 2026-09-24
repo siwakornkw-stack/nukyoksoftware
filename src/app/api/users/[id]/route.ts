@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getSession, isAdmin, hashPassword } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { MIN_PASSWORD, ROLES } from "@/lib/users";
+import { audit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -45,5 +46,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
 
   await prisma.customer.update({ where: { CustomerId: id }, data });
+  // Never the hash itself; only that a reset happened.
+  await audit(
+    "user",
+    id,
+    "update",
+    s.username,
+    { Username: user.Username, Role: user.Role, Status: user.Status },
+    { Role: data.Role ?? user.Role, Status: data.Status ?? user.Status, passwordReset: Boolean(data.PasswordHash) }
+  );
   return NextResponse.json({ ok: true });
 }

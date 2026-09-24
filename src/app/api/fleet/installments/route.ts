@@ -6,6 +6,7 @@ import { getSession } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { dec } from "@/lib/fleet/queries";
 import { put } from "@/lib/storage";
+import { audit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +92,7 @@ export async function POST(req: Request) {
       },
     });
     if (!count) return NextResponse.json({ error: "งวดนี้ชำระแล้ว" }, { status: 400 });
+    await audit("installment", id, "pay", session.username, { DatePay: null }, { DatePay: new Date(), PaymentEvidence: evidenceUrl ?? null });
     return NextResponse.json({ ok: true, evidence: evidenceUrl ?? null });
   }
 
@@ -112,6 +114,7 @@ export async function POST(req: Request) {
       data: { DatePay: new Date(), Status: "paid", UpdatedByUsername: session.username },
     });
     if (!count) return NextResponse.json({ error: "งวดนี้ชำระแล้ว" }, { status: 400 });
+    await audit("installment", id, "pay", session.username, { DatePay: null }, { DatePay: new Date() });
     return NextResponse.json({ ok: true });
   }
 
@@ -158,6 +161,11 @@ export async function POST(req: Request) {
       }
       throw e;
     }
+    await audit("vehicle", vehicleId, "generate-installments", session.username, null, {
+      periods: data.length,
+      amount,
+      firstDue: data[0]?.DueDate,
+    });
     return NextResponse.json({ ok: true, created: data.length });
   }
 

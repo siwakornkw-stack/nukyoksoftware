@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession, isAdmin } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
+import { audit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await ctx.params;
-  if (!(await ownedVehicle(id))) return NextResponse.json({ error: "not found" }, { status: 404 });
+  const before = await ownedVehicle(id);
+  if (!before) return NextResponse.json({ error: "not found" }, { status: 404 });
   const b = await req.json().catch(() => ({}));
   const v = await prisma.vehicle.update({
     where: { VehicleId: id },
@@ -58,6 +60,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       UpdatedAt: new Date(),
     },
   });
+  await audit("vehicle", id, "update", session.username, before, v);
   return NextResponse.json({ vehicle: v });
 }
 
@@ -72,5 +75,6 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     where: { VehicleId: id },
     data: { Status: "inactive", UpdatedByUsername: session.username },
   });
+  await audit("vehicle", id, "deactivate", session.username, { Status: "active" }, { Status: "inactive" });
   return NextResponse.json({ ok: true });
 }

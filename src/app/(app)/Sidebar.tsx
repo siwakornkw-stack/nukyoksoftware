@@ -66,6 +66,7 @@ const groups: { title: string | null; items: { href: string; label: string; icon
     items: [
       { href: "/account", label: "บัญชีของฉัน", icon: "🔑" },
       { href: "/settings/users", label: "ผู้ใช้งาน", icon: "👥", adminOnly: true },
+      { href: "/settings/audit", label: "ประวัติการแก้ไข", icon: "🕘", adminOnly: true },
     ],
   },
 ];
