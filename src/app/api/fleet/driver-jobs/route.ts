@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
+import { notifyDriverOfJob } from "@/lib/fleet/driver-line";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,8 @@ export async function POST(req: Request) {
         CreatedByUsername: session.username,
       },
     });
-    return NextResponse.json({ job });
+    const lineSent = job.VehicleDriverId ? await notifyDriverOfJob(job.DriverJobId) : false;
+    return NextResponse.json({ job, lineSent });
   }
 
   if (b.action === "assign") {
@@ -72,7 +74,8 @@ export async function POST(req: Request) {
         RespondedAt: driverId ? new Date() : null,
       },
     });
-    return NextResponse.json({ ok: true });
+    const lineSent = driverId ? await notifyDriverOfJob(b.jobId) : false;
+    return NextResponse.json({ ok: true, lineSent });
   }
 
   if (b.action === "cancel") {

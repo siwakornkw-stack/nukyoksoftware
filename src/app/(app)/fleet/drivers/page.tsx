@@ -25,6 +25,8 @@ interface Job {
 const JOB_STATUS: Record<string, string> = {
   pending: "รอมอบหมาย",
   assigned: "มอบหมายแล้ว",
+  accepted: "คนขับรับงานแล้ว",
+  done: "เสร็จแล้ว",
   cancelled: "ยกเลิก",
 };
 
@@ -35,6 +37,14 @@ export default function DriversPage() {
   const [newJob, setNewJob] = useState({ origin: "", destination: "", scheduledAt: "", vehicleDriverId: "", note: "" });
   const [driverErr, setDriverErr] = useState("");
   const [jobErr, setJobErr] = useState("");
+  const [jobMsg, setJobMsg] = useState("");
+
+  // Assigning a driver pushes the job to their LINE; say whether that happened.
+  async function lineNote(res: Response, assigned: boolean) {
+    if (!assigned) return setJobMsg("");
+    const d = await res.clone().json().catch(() => ({}));
+    setJobMsg(d.lineSent ? "ส่งงานให้คนขับทาง LINE แล้ว" : "ไม่ได้ส่ง LINE (คนขับยังไม่มี LINE ID หรือส่งไม่สำเร็จ)");
+  }
 
   const load = useCallback(() => {
     fetch("/api/fleet/drivers")
@@ -79,6 +89,7 @@ export default function DriversPage() {
       body: JSON.stringify({ action: "create", ...newJob }),
     });
     if (res.ok) {
+      await lineNote(res, Boolean(newJob.vehicleDriverId));
       setNewJob({ origin: "", destination: "", scheduledAt: "", vehicleDriverId: "", note: "" });
       load();
     } else {
@@ -94,6 +105,7 @@ export default function DriversPage() {
       body: JSON.stringify({ action, jobId, vehicleDriverId }),
     });
     if (!res.ok) setJobErr(await errorOf(res, "ทำรายการไม่สำเร็จ"));
+    else await lineNote(res, action === "assign" && Boolean(vehicleDriverId));
     load();
   }
 
@@ -152,6 +164,7 @@ export default function DriversPage() {
               สร้างงาน
             </button>
             {jobErr && <div className="text-sm text-rose-400">{jobErr}</div>}
+            {jobMsg && <div className="text-sm text-slate-300">{jobMsg}</div>}
           </form>
         </Card>
       </div>
@@ -179,7 +192,7 @@ export default function DriversPage() {
                   </td>
                   <td className="py-2 pr-3 text-slate-400">{j.ScheduledAt ? thDateTime(j.ScheduledAt) : "-"}</td>
                   <td className="py-2 pr-3">
-                    {j.Status === "cancelled" ? (
+                    {j.Status === "cancelled" || j.Status === "done" ? (
                       "-"
                     ) : (
                       <select
@@ -198,7 +211,7 @@ export default function DriversPage() {
                     <span className="text-xs text-slate-300">{JOB_STATUS[j.Status] ?? j.Status}</span>
                   </td>
                   <td className="py-2">
-                    {j.Status !== "cancelled" && (
+                    {j.Status !== "cancelled" && j.Status !== "done" && (
                       <button
                         onClick={() => jobAction("cancel", j.DriverJobId)}
                         className="rounded-md px-2 py-1 text-xs bg-rose-500/20 text-rose-300 hover:bg-rose-500/30"

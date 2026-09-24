@@ -7,6 +7,7 @@ import * as lineApi from "@/lib/fuel/line";
 import { sha256, compressImage, storeBillImage } from "@/lib/fuel/image";
 import { getLineAdminId } from "@/lib/fuel/settings";
 import { loadMatcher } from "@/lib/fleet/office-import";
+import { handleDriverReply } from "@/lib/fleet/driver-line";
 
 export const dynamic = "force-dynamic";
 
@@ -146,6 +147,12 @@ async function handleText(ev: LineEvent) {
   const replyToken = ev.replyToken;
   const userId = ev.source?.userId;
   if (!replyToken) return;
+
+  const jobReply = await handleDriverReply(userId, text);
+  if (jobReply) {
+    await lineApi.reply(replyToken, jobReply);
+    return;
+  }
 
   if (text === "id") {
     await lineApi.reply(replyToken, `LINE userId ของคุณ:\n${userId ?? "(ไม่ทราบ)"}`);
