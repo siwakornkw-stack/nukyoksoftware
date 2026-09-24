@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 // uploaded file serving.
 const PUBLIC_PREFIXES = [
   "/login",
+  "/privacy", // linked from the Google OAuth consent screen
   "/api/auth",
   "/api/fuel/webhook",
   "/api/cron",
