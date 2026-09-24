@@ -105,6 +105,15 @@ function Brand() {
   );
 }
 
+// Plain GET form: works without JS and lands on /search?q=.
+function SearchBox({ onNavigate }: { onNavigate?: () => void }) {
+  return (
+    <form action="/search" onSubmit={onNavigate} className="mb-3 px-1">
+      <input name="q" className="field py-1.5 text-sm" placeholder="🔎 ค้นหา ทะเบียน / เอกสาร / ชื่อ" />
+    </form>
+  );
+}
+
 function NavLinks({ pathname, onNavigate, unread, role }: { pathname: string; onNavigate?: () => void; unread: number; role?: string }) {
   const current = activeHref(pathname);
   return (
@@ -191,6 +200,7 @@ export function Sidebar({ userName, role }: { userName: string; role?: string })
         <div className="mb-5 px-2">
           <Brand />
         </div>
+        <SearchBox />
         <NavLinks pathname={pathname} unread={unread} role={role} />
         <div className="mt-auto pt-4 border-t border-slate-800/60">
           <UserBlock userName={userName} role={role} />
@@ -229,6 +239,7 @@ export function Sidebar({ userName, role }: { userName: string; role?: string })
                 ✕
               </button>
             </div>
+            <SearchBox onNavigate={() => setOpen(false)} />
             <NavLinks pathname={pathname} unread={unread} role={role} onNavigate={() => setOpen(false)} />
             <div className="mt-auto pt-4 border-t border-slate-800/60">
               <UserBlock userName={userName} role={role} />
