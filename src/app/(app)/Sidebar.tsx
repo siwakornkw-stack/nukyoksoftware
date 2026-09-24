@@ -43,7 +43,10 @@ const groups: { title: string | null; items: { href: string; label: string; icon
   },
   {
     title: "บิลน้ำมัน",
-    items: [{ href: "/fuel", label: "ตรวจบิลน้ำมัน", icon: "⛽" }],
+    items: [
+      { href: "/fuel", label: "ตรวจบิลน้ำมัน", icon: "⛽" },
+      { href: "/fuel/reconcile", label: "เทียบกับบัญชีออฟฟิศ", icon: "🔍" },
+    ],
   },
   {
     title: "สินทรัพย์",

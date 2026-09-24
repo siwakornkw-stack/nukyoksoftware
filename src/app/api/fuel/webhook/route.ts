@@ -6,6 +6,7 @@ import { textReport } from "@/lib/fuel/report";
 import * as lineApi from "@/lib/fuel/line";
 import { sha256, compressImage, storeBillImage } from "@/lib/fuel/image";
 import { getLineAdminId } from "@/lib/fuel/settings";
+import { loadMatcher } from "@/lib/fleet/office-import";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,9 @@ async function handleImage(ev: LineEvent) {
     lastBill,
   });
   const status = reasons.length ? "suspect" : "ok";
+  // Link the receipt to a company vehicle by its plate (same matcher and learned
+  // aliases as the office imports). Unmatched stays null for the reconcile page.
+  const VehicleId = bill.plate ? (await loadMatcher()).match(bill.plate) : null;
 
   const saved = await fuelDb.insertBill({
     lineUserId: userId,
@@ -111,6 +115,7 @@ async function handleImage(ev: LineEvent) {
     plate: bill.plate,
     status,
     suspectReasons: reasons.join(" | ") || null,
+    VehicleId,
   });
 
   const summaryText = [

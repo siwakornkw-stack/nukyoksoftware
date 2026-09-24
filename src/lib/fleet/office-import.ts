@@ -58,7 +58,7 @@ function vehicleOptions(vs: Awaited<ReturnType<typeof loadVehicles>>) {
   return vs.map((v) => ({ id: v.VehicleId, plate: plateText(v), model: v.Model }));
 }
 
-async function loadMatcher() {
+export async function loadMatcher() {
   const [vehicles, aliases] = await Promise.all([
     loadVehicles(),
     prisma.vehicleAlias.findMany({ where: { TenantId: T }, select: { AliasKey: true, VehicleId: true } }),
@@ -69,7 +69,7 @@ async function loadMatcher() {
 
 // A row the user pointed at a different vehicle than we guessed teaches us that
 // the label is another name for it, so the next month's file matches by itself.
-async function rememberAlias(tx: Tx, label: string, vehicleId: string, username: string) {
+export async function rememberAlias(tx: Tx, label: string, vehicleId: string, username: string) {
   const AliasKey = plateKey(label);
   if (!AliasKey) return;
   await tx.vehicleAlias.upsert({
