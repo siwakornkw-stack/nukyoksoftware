@@ -22,6 +22,7 @@ const groups: { title: string | null; items: { href: string; label: string; icon
       { href: "/fleet/installments", label: "ค่างวด / ลูกหนี้", icon: "💳" },
       { href: "/fleet/import", label: "นำเข้าข้อมูล", icon: "⬆️" },
       { href: "/fleet/reports", label: "รายงาน", icon: "📈" },
+      { href: "/fleet/reports/vehicles", label: "กำไร/ต้นทุนรายคัน", icon: "⚖️" },
       { href: "/fleet/master", label: "ข้อมูลหลัก", icon: "🗂️" },
     ],
   },
