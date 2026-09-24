@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { pushText } from "@/lib/fuel/line";
+import { completeJob } from "./driver-jobs";
 
 const bkk = (d: Date) =>
   new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", dateStyle: "medium", timeStyle: "short" }).format(d);
@@ -59,11 +60,18 @@ export async function handleDriverReply(lineUserId: string | undefined, text: st
   if (job.Status === "done") return `งาน #${jobNo} ปิดไปแล้ว`;
   if (accept && job.Status === "accepted") return `รับงาน #${jobNo} ไว้แล้ว`;
 
-  const Status = accept ? "accepted" : "done";
-  await prisma.driverJob.update({ where: { DriverJobId: job.DriverJobId }, data: { Status, RespondedAt: new Date() } });
+  let income: number | null = null;
+  if (accept) {
+    await prisma.driverJob.update({ where: { DriverJobId: job.DriverJobId }, data: { Status: "accepted", RespondedAt: new Date() } });
+  } else {
+    // Same path as the office's "done" button: may record the job's income.
+    const r = await completeJob(job.DriverJobId, `line:${driver.Name}`);
+    if (!r.ok) return r.error;
+    income = r.income;
+  }
 
   // Tell the office in-app (one row per job, refreshed on each update).
-  const message = `${driver.Name} ${accept ? "รับงาน" : "ส่งงานเสร็จ"} #${jobNo} (${job.Origin} → ${job.Destination})`;
+  const message = `${driver.Name} ${accept ? "รับงาน" : "ส่งงานเสร็จ"} #${jobNo} (${job.Origin} → ${job.Destination})${income ? ` บันทึกรายได้ ${income.toLocaleString()} บาท` : ""}`;
   const users = await prisma.customer.findMany({ where: { TenantId: DEFAULT_TENANT_ID, Status: "active" }, select: { CustomerId: true } });
   for (const u of users) {
     await prisma.notification.upsert({

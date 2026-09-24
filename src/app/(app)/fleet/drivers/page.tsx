@@ -18,6 +18,7 @@ interface Job {
   Destination: string;
   ScheduledAt: string | null;
   Status: string;
+  Price: number | null;
   VehicleDriverId: string | null;
   VehicleDriver: { Name: string } | null;
 }
@@ -30,11 +31,14 @@ const JOB_STATUS: Record<string, string> = {
   cancelled: "ยกเลิก",
 };
 
+const EMPTY_JOB = { origin: "", destination: "", scheduledAt: "", vehicleDriverId: "", vehicleId: "", price: "", note: "" };
+
 export default function DriversPage() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [newDriver, setNewDriver] = useState({ name: "", mobileNo: "", licenseNo: "", lineUserId: "" });
-  const [newJob, setNewJob] = useState({ origin: "", destination: "", scheduledAt: "", vehicleDriverId: "", note: "" });
+  const [newJob, setNewJob] = useState(EMPTY_JOB);
+  const [vehicles, setVehicles] = useState<{ VehicleId: string; LicensePlatePrefix: string; LicensePlateSuffix: string; Model: string; Status: string }[]>([]);
   const [driverErr, setDriverErr] = useState("");
   const [jobErr, setJobErr] = useState("");
   const [jobMsg, setJobMsg] = useState("");
@@ -53,6 +57,9 @@ export default function DriversPage() {
     fetch("/api/fleet/driver-jobs")
       .then((r) => r.json())
       .then((d) => setJobs(d.jobs ?? []));
+    fetch("/api/fleet/vehicles")
+      .then((r) => r.json())
+      .then((d) => setVehicles((d.vehicles ?? []).filter((v: { Status: string }) => v.Status === "active")));
   }, []);
 
   useEffect(load, [load]);
@@ -90,7 +97,7 @@ export default function DriversPage() {
     });
     if (res.ok) {
       await lineNote(res, Boolean(newJob.vehicleDriverId));
-      setNewJob({ origin: "", destination: "", scheduledAt: "", vehicleDriverId: "", note: "" });
+      setNewJob(EMPTY_JOB);
       load();
     } else {
       setJobErr(await errorOf(res, "สร้างงานไม่สำเร็จ"));
@@ -154,6 +161,15 @@ export default function DriversPage() {
                 ))}
               </select>
             </div>
+            <div className="grid grid-cols-2 gap-2">
+              <select className="field" value={newJob.vehicleId} onChange={(e) => setNewJob({ ...newJob, vehicleId: e.target.value })}>
+                <option value="">- รถ (ไม่ระบุ = รถประจำของคนขับ) -</option>
+                {vehicles.map((v) => (
+                  <option key={v.VehicleId} value={v.VehicleId}>{`${v.LicensePlatePrefix} ${v.LicensePlateSuffix}`.trim() || v.Model}</option>
+                ))}
+              </select>
+              <input type="number" min="0" step="0.01" className="field" placeholder="ค่าจ้าง (บาท) — ลงรายได้เมื่อปิดงาน" value={newJob.price} onChange={(e) => setNewJob({ ...newJob, price: e.target.value })} />
+            </div>
             <input
               className="field"
               placeholder="หมายเหตุ"
@@ -179,6 +195,7 @@ export default function DriversPage() {
                 <th className="py-2 pr-3">เส้นทาง</th>
                 <th className="py-2 pr-3">กำหนด</th>
                 <th className="py-2 pr-3">คนขับ</th>
+                <th className="py-2 pr-3 text-right">ค่าจ้าง</th>
                 <th className="py-2 pr-3">สถานะ</th>
                 <th className="py-2"></th>
               </tr>
@@ -193,7 +210,7 @@ export default function DriversPage() {
                   <td className="py-2 pr-3 text-slate-400">{j.ScheduledAt ? thDateTime(j.ScheduledAt) : "-"}</td>
                   <td className="py-2 pr-3">
                     {j.Status === "cancelled" || j.Status === "done" ? (
-                      "-"
+                      j.VehicleDriver?.Name ?? "-"
                     ) : (
                       <select
                         className="field !py-1 text-xs"
@@ -207,10 +224,19 @@ export default function DriversPage() {
                       </select>
                     )}
                   </td>
+                  <td className="py-2 pr-3 text-right">{j.Price == null ? "-" : j.Price.toLocaleString()}</td>
                   <td className="py-2 pr-3">
                     <span className="text-xs text-slate-300">{JOB_STATUS[j.Status] ?? j.Status}</span>
                   </td>
-                  <td className="py-2">
+                  <td className="py-2 whitespace-nowrap">
+                    {(j.Status === "assigned" || j.Status === "accepted") && (
+                      <button
+                        onClick={() => confirm(`ปิดงาน #${j.JobNo}${j.Price ? ` และบันทึกรายได้ ${j.Price.toLocaleString()} บาท` : ""}?`) && jobAction("done", j.DriverJobId)}
+                        className="mr-1 rounded-md px-2 py-1 text-xs bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
+                      >
+                        ปิดงาน
+                      </button>
+                    )}
                     {j.Status !== "cancelled" && j.Status !== "done" && (
                       <button
                         onClick={() => jobAction("cancel", j.DriverJobId)}
@@ -224,7 +250,7 @@ export default function DriversPage() {
               ))}
               {!jobs.length && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500">
+                  <td colSpan={7} className="py-8 text-center text-slate-500">
                     ยังไม่มีงานวิ่ง
                   </td>
                 </tr>
