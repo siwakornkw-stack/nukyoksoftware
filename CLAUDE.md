@@ -16,7 +16,7 @@ See `ARCHITECTURE.md` for the source→target mapping (came from three legacy ap
 
 ## Stack
 
-Next.js 16.2.7 (App Router) · React 19 · Tailwind v4 (dark, **no MUI**) · Prisma 5 + PostgreSQL · TypeScript strict · recharts · xlsx · @line/bot-sdk · sharp · JWT (jsonwebtoken) + bcryptjs.
+Next.js 16.3.6 (App Router; upgraded from 16.2.7 for the /_next/image RCE advisory) · React 19 · Tailwind v4 (dark, **no MUI**) · Prisma 5 + PostgreSQL · TypeScript strict · recharts · xlsx · @line/bot-sdk · sharp · JWT (jsonwebtoken) + bcryptjs.
 
 ## Commands
 
@@ -24,7 +24,7 @@ Next.js 16.2.7 (App Router) · React 19 · Tailwind v4 (dark, **no MUI**) · Pri
 npm run dev            # next dev
 npm run build          # prisma generate && next build
 npm run lint           # eslint (flat config)
-npm test               # vitest (tests/*.test.ts; pure logic, no DB)
+npm test               # vitest (tests/*.test.ts; pure logic, no DB). CI runs tsc/lint/test/build on push (.github/workflows/ci.yml)
 npm run prisma:migrate # prisma migrate dev
 npm run db:seed        # tenant + admin/admin1234
 npm run worker         # node-cron worker (hits /api/cron/*)
@@ -68,6 +68,11 @@ Layout:
 - **Notifications**: one row per (user, `Key`) — e.g. `tax|<TaxId>`, `loan|<id>`, `job|<id>`; upsert so a repeat reminder refreshes the row and marks it unread. The cron writes them for every active user.
 - **Login throttle** (`src/lib/rate-limit.ts`, in memory, fine while PM2 runs one web process): 5 failures per (IP, username), 20 per username, 20 per IP (only when the IP is known) in 15 minutes lock for 15 minutes. IP = `X-Real-IP`, else the last `X-Forwarded-For` hop; never the first hop (client-controlled). Verified on production 2026-09-24: nginx passes the real client IP (requests through the domain and from localhost count separately), and a spoofed `X-Forwarded-For` does not escape the limit.
 - **LINE bot commands**: `id` answers anyone (needed to link drivers); `รายงาน` answers only the LINE admin ids from fuel settings; `รับ/เสร็จ <jobNo>` only the driver the job is assigned to.
+- **Ops alerts**: `opsAlert(key, title, text)` (`src/lib/ops-alert.ts`) pushes to the LINE admins + admin inbox, once per 30 min per key. Sources: `instrumentation.ts` onRequestError (any unhandled 500), `/api/cron/ops` (backup script reports every run, cron worker reports failed calls), a stale/failed backup in the 08:00 `/api/cron/daily-summary`. `src/lib/today.ts` is the single source for "what needs attention" (home page + morning summary).
+- **2FA**: TOTP (`src/lib/totp.ts`, RFC 6238). Admins without it are redirected to `/account` (layout redirect via the proxy `x-pathname` header + `MfaGuard` for client navigation); APIs are not gated. Admins reset another user from `/settings/users`. **Only admin locked out** (lost phone): on the server `psql "$URL" -c "UPDATE \"Customer\" SET \"TotpEnabled\"=false, \"TotpSecret\"=NULL WHERE \"Username\"='admin'"`.
+- **Driver jobs**: closing a job (office button or LINE "เสร็จ n") goes through `completeJob()` (`src/lib/fleet/driver-jobs.ts`), which writes the fare as `IncomeVehicle` (unique `DriverJobId`).
+- **Oil by meter**: `/fleet/maintenance`, `src/lib/fleet/maintenance.ts`. Meters are km for trucks and engine hours for machinery, hence `Vehicle.OilInterval` per vehicle (null = AppSetting `oil_interval_km`, default 10,000).
+- **Uploads**: request bodies through the proxy are capped at 10 MB (`proxyClientMaxBodySize`); check `content-length` and guard `req.formData().catch(() => null)`.
 - **Audit**: call `audit(entity, id, action, username, before, after)` after money-related or account changes. It never throws.
 - **Tenancy**: multi-tenant schema kept, but this is a single-company install — one seeded tenant `DEFAULT_TENANT_ID`. Always scope by it (fleet child records: `where: { Vehicle: { TenantId: DEFAULT_TENANT_ID } }`).
 - **Auth gate**: `src/proxy.ts` (Next 16 proxy/middleware) redirects unauthenticated navigation to `/login`. `(app)/layout.tsx` also redirects as defense-in-depth. NOTE: the build's `middleware-manifest.json` looks empty but the proxy **does** run (verified at runtime) — don't "fix" it by renaming.
@@ -98,7 +103,7 @@ Layout:
 2. **Server must equal the last deployed commit** before overwriting: hash `src` + `prisma` from `git archive <last-deployed-sha> src prisma` and from the server tree (per-file `tr -d '\r' | sha1sum`), diff them. Any difference = someone changed the server; stop and investigate.
 3. **Back up the DB** when the deploy has a migration or touches data: on the server, `pg_dump --no-owner --no-privileges "$URL" | gzip > ~/backups/dhevakij-<what>-$(date +%Y%m%d-%H%M%S).sql.gz`, where `URL` is `DATABASE_URL` from `.env` with the `?schema=public` suffix stripped (pg_dump rejects it).
 4. Ship: `git archive HEAD src prisma | ssh -i ~/.ssh/id_88arena_vps ubuntu@15.235.208.118 'tar xf - -C /home/ubuntu/dhevakij'`. Include `prisma`, or new migrations never reach the server. When `package.json`/`package-lock.json` or `deploy/` changed, add them to the archive and run `npm install --no-audit --no-fund` on the server before building (not `npm ci`: it deletes `node_modules` under the running app). Check the lock hash is unchanged afterwards.
-5. On the server: `npx prisma migrate deploy` (a no-op when nothing is pending).
+5. On the server: `npx prisma migrate deploy` (a no-op when nothing is pending). If `worker/` changed, ship it too (the restart in step 6 reloads `dhevakij-cron`).
 6. **Build, and restart only if the build succeeded**: `npm run build > /tmp/dhk-build.log 2>&1 && pm2 restart dhevakij-web dhevakij-cron || tail -30 /tmp/dhk-build.log`. Never pipe the build into `grep`/`head` before `&&`: the pipe swallows the exit code. On 2026-09-22 that restarted PM2 after a failed build. A failed `next build` **deletes `.next`**, so `next start` then serves nothing (outage, `Could not find a production build`) until a build succeeds.
 7. If the build fails at `next/font/google` ("queries have exactly one entry"), it is a transient Google Fonts download failure. Re-run the build; do not change code.
 8. Verify: hashes equal HEAD, `curl -s -o /dev/null -w "%{http_code}" http://localhost:3002/login` is 200 (app pages 307 to login), and `pm2 logs dhevakij-web --err --nostream` has nothing newer than the restart. Old `Failed to find Server Action "x"` lines are scanner bots, not us.
