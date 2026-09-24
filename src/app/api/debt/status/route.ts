@@ -8,7 +8,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const { docNo, status } = await req.json().catch(() => ({}));
-  if (!docNo || !STATUS_LIST.includes(status)) {
+  // docNo must be a string: an object ({ not: "" }) would be a Prisma filter and
+  // update every record of the current version.
+  if (typeof docNo !== "string" || !docNo || !STATUS_LIST.includes(status)) {
     return NextResponse.json({ error: "invalid payload" }, { status: 400 });
   }
   const ok = await updateRecordStatus(docNo, status as DebtStatus);

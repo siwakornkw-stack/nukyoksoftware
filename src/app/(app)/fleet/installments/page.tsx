@@ -35,6 +35,7 @@ function InstallmentsInner() {
   const [payErr, setPayErr] = useState("");
   const [evidence, setEvidence] = useState<Record<string, File>>({});
   const [paying, setPaying] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const load = useCallback(() => {
@@ -75,11 +76,12 @@ function InstallmentsInner() {
 
   async function generate() {
     setGenMsg("");
+    setGenerating(true);
     const res = await fetch("/api/fleet/installments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "generate", vehicleId: vehicle, startDate }),
-    });
+    }).finally(() => setGenerating(false));
     const d = await res.json().catch(() => ({}));
     setGenMsg(res.ok ? `สร้างค่างวด ${d.created} งวดแล้ว` : d.error || "สร้างไม่สำเร็จ");
     if (res.ok) load();
@@ -102,7 +104,7 @@ function InstallmentsInner() {
               <span className="block text-slate-400 mb-1">งวดแรกครบกำหนด</span>
               <input type="date" className="field" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </label>
-            <button onClick={generate} className="rounded-lg px-3 py-2 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium">
+            <button onClick={generate} disabled={generating} className="rounded-lg px-3 py-2 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium disabled:opacity-50">
               สร้างจากจำนวนงวดของรถ
             </button>
             {genMsg && <span className="text-sm text-slate-300">{genMsg}</span>}

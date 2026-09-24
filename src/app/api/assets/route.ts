@@ -25,16 +25,19 @@ export async function POST(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const b = await req.json().catch(() => ({}));
-  if (!b.name) return NextResponse.json({ error: "ต้องระบุชื่อสินทรัพย์" }, { status: 400 });
-  if (!b.category) return NextResponse.json({ error: "ต้องระบุหมวดหมู่" }, { status: 400 });
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const name = str(b.name);
+  const category = str(b.category);
+  if (!name) return NextResponse.json({ error: "ต้องระบุชื่อสินทรัพย์" }, { status: 400 });
+  if (!category) return NextResponse.json({ error: "ต้องระบุหมวดหมู่" }, { status: 400 });
   const asset = await prisma.asset.create({
     data: {
       TenantId: DEFAULT_TENANT_ID,
-      Name: b.name,
-      Category: b.category,
-      Code: b.code || null,
-      DefaultLocation: b.defaultLocation || null,
-      Note: b.note || null,
+      Name: name,
+      Category: category,
+      Code: str(b.code) || null,
+      DefaultLocation: str(b.defaultLocation) || null,
+      Note: str(b.note) || null,
       CreatedByUsername: session.username,
     },
   });

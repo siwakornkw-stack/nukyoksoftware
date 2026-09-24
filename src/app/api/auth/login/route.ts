@@ -4,7 +4,11 @@ import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { verifyPassword, signToken, setSessionCookie } from "@/lib/auth";
 
 export async function POST(req: Request) {
-  const { username, password } = await req.json().catch(() => ({}));
+  const b = await req.json().catch(() => ({}));
+  // Strings only: an object username ({ equals: "admin" }) would reach Prisma as a
+  // filter and let a password be tried without knowing the account name.
+  const username = typeof b.username === "string" ? b.username : "";
+  const password = typeof b.password === "string" ? b.password : "";
   if (!username || !password) {
     return NextResponse.json({ error: "กรอกชื่อผู้ใช้และรหัสผ่าน" }, { status: 400 });
   }

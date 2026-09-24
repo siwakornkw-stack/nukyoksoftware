@@ -29,6 +29,7 @@ export default function AssetsPage() {
   const [borrow, setBorrow] = useState({ assetId: "", borrowerName: "", location: "" });
   const [assetErr, setAssetErr] = useState("");
   const [borrowErr, setBorrowErr] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
     fetch("/api/assets")
@@ -73,11 +74,12 @@ export default function AssetsPage() {
   async function doBorrow(e: React.FormEvent) {
     e.preventDefault();
     setBorrowErr("");
+    setBusy(true);
     const res = await fetch("/api/assets/loans", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "borrow", ...borrow }),
-    });
+    }).finally(() => setBusy(false));
     if (res.ok) {
       setBorrow({ assetId: "", borrowerName: "", location: "" });
       load();
@@ -88,11 +90,12 @@ export default function AssetsPage() {
 
   async function doReturn(assetLoanId: string) {
     setBorrowErr("");
+    setBusy(true);
     const res = await fetch("/api/assets/loans", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "return", assetLoanId }),
-    });
+    }).finally(() => setBusy(false));
     if (!res.ok) setBorrowErr(await errorOf(res, "บันทึกการคืนไม่สำเร็จ"));
     load();
   }
@@ -153,7 +156,7 @@ export default function AssetsPage() {
               <input className="field" placeholder="ชื่อผู้ยืม *" value={borrow.borrowerName} onChange={(e) => setBorrow({ ...borrow, borrowerName: e.target.value })} required />
               <input className="field" placeholder="สถานที่นำไปใช้ *" value={borrow.location} onChange={(e) => setBorrow({ ...borrow, location: e.target.value })} required />
             </div>
-            <button className="rounded-lg px-3 py-2 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium">
+            <button disabled={busy} className="rounded-lg px-3 py-2 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium disabled:opacity-50">
               บันทึกการยืม
             </button>
             {borrowErr && <div className="text-sm text-rose-400">{borrowErr}</div>}
@@ -189,7 +192,8 @@ export default function AssetsPage() {
                     {!l.ReturnedAt && (
                       <button
                         onClick={() => doReturn(l.AssetLoanId)}
-                        className="rounded-md px-2 py-1 text-xs bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
+                        disabled={busy}
+                        className="rounded-md px-2 py-1 text-xs bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
                       >
                         คืน
                       </button>

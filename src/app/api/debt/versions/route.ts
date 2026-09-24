@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const { id } = await req.json().catch(() => ({}));
-  if (!id) return NextResponse.json({ error: "missing id" }, { status: 400 });
+  if (typeof id !== "string" || !id) return NextResponse.json({ error: "missing id" }, { status: 400 });
   const ok = await setCurrentVersion(id);
   return NextResponse.json({ ok });
 }

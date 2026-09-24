@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
@@ -63,9 +64,11 @@ export async function POST(req: Request) {
 
     const inst = await prisma.installmentsVehicle.findFirst({
       where: { InstallmentsVehicleId: id, Vehicle: { TenantId: DEFAULT_TENANT_ID } },
-      select: { InstallmentsVehicleId: true },
+      select: { InstallmentsVehicleId: true, DatePay: true },
     });
     if (!inst) return NextResponse.json({ error: "not found" }, { status: 404 });
+    // Checked before storing the evidence file so a repeat does not leave an orphan on disk.
+    if (inst.DatePay) return NextResponse.json({ error: "งวดนี้ชำระแล้ว" }, { status: 400 });
 
     let evidenceUrl: string | undefined;
     const file = form.get("file");
@@ -77,8 +80,9 @@ export async function POST(req: Request) {
       evidenceUrl = stored.url;
     }
 
-    await prisma.installmentsVehicle.update({
-      where: { InstallmentsVehicleId: id },
+    // Only an unpaid row: paying twice must not move the pay date.
+    const { count } = await prisma.installmentsVehicle.updateMany({
+      where: { InstallmentsVehicleId: id, DatePay: null },
       data: {
         DatePay: new Date(),
         Status: "paid",
@@ -86,28 +90,33 @@ export async function POST(req: Request) {
         ...(evidenceUrl ? { PaymentEvidence: evidenceUrl } : {}),
       },
     });
+    if (!count) return NextResponse.json({ error: "งวดนี้ชำระแล้ว" }, { status: 400 });
     return NextResponse.json({ ok: true, evidence: evidenceUrl ?? null });
   }
 
   const body = await req.json().catch(() => ({}));
   const action = body.action;
+  // A JSON object here would reach Prisma as a filter ({ not: "" }), not a value.
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
 
   if (action === "pay") {
-    if (!body.id) return NextResponse.json({ error: "missing id" }, { status: 400 });
+    const id = str(body.id);
+    if (!id) return NextResponse.json({ error: "missing id" }, { status: 400 });
     const inst = await prisma.installmentsVehicle.findFirst({
-      where: { InstallmentsVehicleId: body.id, Vehicle: { TenantId: DEFAULT_TENANT_ID } },
+      where: { InstallmentsVehicleId: id, Vehicle: { TenantId: DEFAULT_TENANT_ID } },
       select: { InstallmentsVehicleId: true },
     });
     if (!inst) return NextResponse.json({ error: "not found" }, { status: 404 });
-    await prisma.installmentsVehicle.update({
-      where: { InstallmentsVehicleId: body.id },
+    const { count } = await prisma.installmentsVehicle.updateMany({
+      where: { InstallmentsVehicleId: id, DatePay: null },
       data: { DatePay: new Date(), Status: "paid", UpdatedByUsername: session.username },
     });
+    if (!count) return NextResponse.json({ error: "งวดนี้ชำระแล้ว" }, { status: 400 });
     return NextResponse.json({ ok: true });
   }
 
   if (action === "generate") {
-    const vehicleId = body.vehicleId as string;
+    const vehicleId = str(body.vehicleId);
     if (!vehicleId) return NextResponse.json({ error: "missing vehicleId" }, { status: 400 });
     const v = await prisma.vehicle.findFirst({
       where: { VehicleId: vehicleId, TenantId: DEFAULT_TENANT_ID },
@@ -120,7 +129,8 @@ export async function POST(req: Request) {
     if (existing > 0) {
       return NextResponse.json({ error: "มีค่างวดอยู่แล้ว" }, { status: 400 });
     }
-    const start = body.startDate ? new Date(body.startDate) : new Date();
+    const start = body.startDate ? new Date(str(body.startDate)) : new Date();
+    if (isNaN(start.getTime())) return NextResponse.json({ error: "วันที่งวดแรกไม่ถูกต้อง" }, { status: 400 });
     const anchorDay = start.getUTCDate();
     const amount = Number(v.InstallmentAmount);
     const data = Array.from({ length: v.InstallmentPeriods }, (_, idx) => {
@@ -139,7 +149,15 @@ export async function POST(req: Request) {
         CreatedByUsername: session.username,
       };
     });
-    await prisma.installmentsVehicle.createMany({ data });
+    try {
+      await prisma.installmentsVehicle.createMany({ data });
+    } catch (e) {
+      // A concurrent generate won the race: (VehicleId, InstallmentNumber) is unique.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        return NextResponse.json({ error: "มีค่างวดอยู่แล้ว" }, { status: 400 });
+      }
+      throw e;
+    }
     return NextResponse.json({ ok: true, created: data.length });
   }
 

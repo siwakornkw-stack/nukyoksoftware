@@ -29,7 +29,6 @@ export async function GET(req: Request) {
   const today = new Date(
     `${new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(now)}T00:00:00.000Z`
   );
-  const in30 = new Date(today.getTime() + 30 * 86400000);
   const daysLeft = (d: Date) => Math.round((d.getTime() - today.getTime()) / 86400000);
   const REMIND_DAYS = new Set([30, 7, 3]);
   // Fire at exactly 30/7/3 days out, then every day once it's actually expired.
@@ -43,14 +42,20 @@ export async function GET(req: Request) {
     },
   };
 
-  // Unbounded below: once something is overdue it must keep matching every day
-  // (shouldRemind), not just up to 30 days past expiry.
+  // Only each vehicle's newest record counts: last year's expired row must not
+  // keep firing once it has been renewed. No date filter here, or a renewed
+  // row outside the window would let the old one look like the newest.
+  // Unbounded below on purpose: an overdue record matches every day (shouldRemind).
+  // A deleted vehicle is only marked inactive and keeps its records; it needs no
+  // renewal reminders (unpaid installments below still apply).
+  const activeVehicle = { TenantId: T, Status: "active" };
   const [tenant, taxesRaw, cmisRaw, policiesRaw, oilsRaw, overdue] = await Promise.all([
     prisma.tenant.findUnique({ where: { TenantId: T } }),
-    prisma.tax.findMany({ where: { Vehicle: { TenantId: T }, EndDate: { lte: in30 } }, include: { Vehicle: vehicleSel } }),
-    prisma.compulsoryMotorInsuranceVehicle.findMany({ where: { Vehicle: { TenantId: T }, EndDate: { lte: in30 } }, include: { Vehicle: vehicleSel } }),
-    prisma.insurancePolicyVehicle.findMany({ where: { Vehicle: { TenantId: T }, EndDate: { lte: in30 } }, include: { Vehicle: vehicleSel } }),
-    prisma.drainTheOilVehicle.findMany({ where: { Vehicle: { TenantId: T }, DueDate: { lte: in30 } }, include: { Vehicle: vehicleSel } }),
+    prisma.tax.findMany({ where: { Vehicle: activeVehicle }, orderBy: { EndDate: "desc" }, distinct: ["VehicleId"], include: { Vehicle: vehicleSel } }),
+    prisma.compulsoryMotorInsuranceVehicle.findMany({ where: { Vehicle: activeVehicle }, orderBy: { EndDate: "desc" }, distinct: ["VehicleId"], include: { Vehicle: vehicleSel } }),
+    prisma.insurancePolicyVehicle.findMany({ where: { Vehicle: activeVehicle }, orderBy: { EndDate: "desc" }, distinct: ["VehicleId"], include: { Vehicle: vehicleSel } }),
+    // Newest oil change by service date; its DueDate is the one that matters.
+    prisma.drainTheOilVehicle.findMany({ where: { Vehicle: activeVehicle }, orderBy: { Date: "desc" }, distinct: ["VehicleId"], include: { Vehicle: vehicleSel } }),
     prisma.installmentsVehicle.findMany({ where: { Vehicle: { TenantId: T }, DatePay: null, DueDate: { lt: now } }, include: { Vehicle: vehicleSel } }),
   ]);
 

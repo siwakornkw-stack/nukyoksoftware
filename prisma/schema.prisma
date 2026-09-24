@@ -589,6 +589,7 @@ model InstallmentsVehicle {
   UpdatedByUsername String?
   VehicleId String @db.VarChar(36)
   Vehicle Vehicle @relation(fields: [VehicleId], references: [VehicleId])
+  @@unique([VehicleId, InstallmentNumber])
   @@index([VehicleId])
   @@index([InstallmentsVehicleId])
 }
