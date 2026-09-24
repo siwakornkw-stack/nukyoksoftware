@@ -160,6 +160,13 @@ async function handleText(ev: LineEvent) {
   }
   const lower = text.toLowerCase();
   if (text.startsWith("รายงาน") || lower.startsWith("report")) {
+    // Company-wide spend per employee: only for the LINE admins set in /fuel
+    // settings. Anyone can add the bot, so it must not answer everybody.
+    const admins = (await getLineAdminId()).split(/[\s,]+/).filter(Boolean);
+    if (!userId || !admins.includes(userId)) {
+      await lineApi.reply(replyToken, "คำสั่งรายงานใช้ได้เฉพาะผู้ดูแลระบบ");
+      return;
+    }
     const parts = text.split(/\s+/);
     const ym = parts[1] && /^\d{4}-\d{2}$/.test(parts[1]) ? parts[1] : bkkMonth();
     const bills = await fuelDb.billsInMonth(ym);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { verifyPassword, signToken, setSessionCookie } from "@/lib/auth";
+import { clientIp, loginLimiter } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   const b = await req.json().catch(() => ({}));
@@ -13,12 +14,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "กรอกชื่อผู้ใช้และรหัสผ่าน" }, { status: 400 });
   }
 
+  // Checked before the password so a locked-out guesser learns nothing more.
+  const ip = clientIp(req);
+  const wait = loginLimiter.retryAfter(ip, username);
+  if (wait > 0) {
+    return NextResponse.json(
+      { error: `ลองรหัสผ่านผิดหลายครั้ง กรุณารอ ${Math.ceil(wait / 60000)} นาทีแล้วลองใหม่` },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(wait / 1000)) } }
+    );
+  }
+
   const user = await prisma.customer.findFirst({
     where: { TenantId: DEFAULT_TENANT_ID, Username: username, Status: "active" },
   });
   if (!user || !(await verifyPassword(password, user.PasswordHash))) {
+    loginLimiter.fail(ip, username);
     return NextResponse.json({ error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" }, { status: 401 });
   }
+  loginLimiter.succeed(ip, username);
 
   await prisma.customer.update({ where: { CustomerId: user.CustomerId }, data: { LatestLogin: new Date() } });
 
