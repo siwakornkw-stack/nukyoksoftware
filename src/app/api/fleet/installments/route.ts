@@ -57,7 +57,8 @@ export async function POST(req: Request) {
 
   // Mark-paid uses multipart/form-data so an optional evidence file can be attached.
   if (contentType.includes("multipart/form-data")) {
-    const form = await req.formData();
+    const form = await req.formData().catch(() => null);
+    if (!form) return NextResponse.json({ error: "ข้อมูลไม่ถูกต้อง" }, { status: 400 });
     const action = String(form.get("action") || "");
     if (action !== "pay") return NextResponse.json({ error: "unknown action" }, { status: 400 });
 

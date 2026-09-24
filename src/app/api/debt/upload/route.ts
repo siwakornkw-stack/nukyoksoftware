@@ -11,8 +11,9 @@ export async function POST(req: Request) {
   if (!s) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const form = await req.formData();
-  const file = form.get("file");
+  // A non-multipart body makes formData() throw; answer 400, not 500.
+  const form = await req.formData().catch(() => null);
+  const file = form?.get("file");
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "ไม่พบไฟล์" }, { status: 400 });
   }
