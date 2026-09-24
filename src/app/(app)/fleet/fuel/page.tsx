@@ -3,8 +3,10 @@ import { PageHeader, Card, StatCard } from "@/components/ui";
 import { baht, num, thDate } from "@/lib/format";
 import {
   ANOMALY_LABEL,
+  BASELINE_MONTHS,
   addMonths,
   analyzeFuel,
+  efficiencyDrops,
   fuelFilterOptions,
   loadFuelRecords,
   monthsBetween,
@@ -42,11 +44,14 @@ export default async function FuelReportPage({ searchParams }: { searchParams: P
   const prevFrom = addMonths(from, -months.length);
   const filter = { vehicleId: sp.vehicle || undefined, receiver: sp.receiver || undefined };
 
-  const [rows, prevRows] = await Promise.all([
+  const [rows, prevRows, history] = await Promise.all([
     loadFuelRecords({ from, to, ...filter }),
     loadFuelRecords({ from: prevFrom, to: prevTo, ...filter }),
+    // Receiver filter would hide fills by others and skew the vehicle's km/L.
+    loadFuelRecords({ from: addMonths(from, -BASELINE_MONTHS), to, vehicleId: filter.vehicleId }),
   ]);
   const r = analyzeFuel(rows, months);
+  r.anomalies = [...r.anomalies, ...efficiencyDrops(history, months)].sort((a, b) => a.row.date.localeCompare(b.row.date));
   const prev = analyzeFuel(prevRows, []);
   const prevByVehicle = new Map(prev.byVehicle.map((v) => [v.vehicleId, v.amount]));
 

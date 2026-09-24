@@ -18,7 +18,7 @@ export interface FuelRecord {
   receiver: string;
 }
 
-export type AnomalyKind = "sameDay" | "dupInvoice" | "noInvoice" | "price" | "odoBack" | "noLiters";
+export type AnomalyKind = "sameDay" | "dupInvoice" | "noInvoice" | "price" | "odoBack" | "kmlDrop" | "noLiters";
 
 export const ANOMALY_LABEL: Record<AnomalyKind, string> = {
   sameDay: "เติมหลายครั้งในวันเดียว",
@@ -26,8 +26,14 @@ export const ANOMALY_LABEL: Record<AnomalyKind, string> = {
   noInvoice: "ไม่มีเลขใบกำกับ",
   price: "ราคาต่อลิตรผิดปกติ",
   odoBack: "เลขไมล์ถอยหลัง",
+  kmlDrop: "กม./ลิตร ต่ำกว่าปกติ",
   noLiters: "ไม่ระบุจำนวนลิตร",
 };
+
+// km/L below this share of the vehicle's own median over the previous
+// BASELINE_MONTHS months is flagged (leak, siphoning, or a vehicle needing service).
+export const BASELINE_MONTHS = 6;
+const KML_DROP = 0.8;
 
 export interface Anomaly {
   kind: AnomalyKind;
@@ -124,6 +130,37 @@ export function findAnomalies(rows: FuelRecord[]): Anomaly[] {
   }
 
   return out.sort((a, b) => a.row.date.localeCompare(b.row.date));
+}
+
+// history must cover BASELINE_MONTHS before months[0] through the last month.
+// Needs at least 3 baseline months with a km/L figure, or nothing is judged.
+export function efficiencyDrops(history: FuelRecord[], months: string[]): Anomaly[] {
+  const out: Anomaly[] = [];
+  for (const list of groupBy(history, (r) => r.vehicleId).values()) {
+    const byMonth = groupBy(list, (r) => r.date.slice(0, 7));
+    const kml = (m: string) => {
+      const rows = byMonth.get(m) ?? [];
+      const liters = rows.reduce((a, r) => a + r.liters, 0);
+      const km = distanceOf(rows);
+      return liters > 0 && km > 0 ? km / liters : 0;
+    };
+    for (const m of months) {
+      const cur = kml(m);
+      if (!cur) continue;
+      const base = Array.from({ length: BASELINE_MONTHS }, (_, i) => kml(addMonths(m, -(i + 1)))).filter((x) => x > 0);
+      if (base.length < 3) continue;
+      const med = median(base);
+      if (cur < med * KML_DROP) {
+        const rows = byMonth.get(m)!;
+        out.push({
+          kind: "kmlDrop",
+          row: rows[rows.length - 1],
+          detail: `${thMonth(m)}: ${round(cur)} กม./ลิตร (ปกติ ${round(med)}, ${round(((cur - med) / med) * 100, 1)}%)`,
+        });
+      }
+    }
+  }
+  return out;
 }
 
 export function analyzeFuel(rows: FuelRecord[], months: string[]) {
