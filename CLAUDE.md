@@ -104,7 +104,12 @@ Layout:
 
 ### Nightly DB backup
 
-`deploy/backup-db.sh` dumps to `~/backups/dhevakij-nightly-*.sql.gz`, keeps 14 days (only `nightly` files rotate, manual pre-deploy dumps stay), refuses empty/failed dumps, and can copy off-machine with `OFFSITE=<rclone remote>`. Installed 2026-09-24 in the ubuntu crontab as `30 19 * * *` (server TZ is UTC, so 02:30 Bangkok; the 88arena backup runs at 19:00 UTC). Log: `~/backups/backup.log`. No `OFFSITE` yet, so backups live only on the VPS. Test locally with a fake `pg_dump` on `PATH` plus `APP_DIR`/`BACKUP_DIR` overrides.
+`deploy/backup-db.sh` dumps to `~/backups/dhevakij-nightly-*.sql.gz`, keeps 14 days (only `nightly` files rotate, manual pre-deploy dumps stay), refuses empty/failed dumps, and can copy off-machine with `OFFSITE=<rclone remote>`. Installed 2026-09-24 in the ubuntu crontab as `30 19 * * *` (server TZ is UTC, so 02:30 Bangkok; the 88arena backup runs at 19:00 UTC). Log: `~/backups/backup.log`. Off-machine copy since 2026-09-24: the cron line sets `OFFSITE=dhkcrypt:`.
+- rclone 1.75.1 is in `~/bin/rclone` (no sudo). `gdrive` = Google Drive with scope `drive.file` (sees only files rclone made); `dhkcrypt` = rclone crypt over `gdrive:dhevakij-backups` (names and contents encrypted). Drive keeps 90 days (`OFFSITE_KEEP_DAYS`).
+- The crypt passwords are in `~/.config/rclone/DHEVAKIJ-BACKUP-PASSWORDS.txt` (600) and must also be in the owner password manager; without them the Drive copies cannot be decrypted. Never print them or the token in a session.
+- **The token uses rclone shared Google client_id, which Google is retiring during 2026.** When uploads start failing (`ERROR: offsite copy failed` in `~/backups/backup.log`), create an own OAuth client in Google Cloud Console (https://rclone.org/drive/#making-your-own-client-id), set `client_id`/`client_secret` on `gdrive` and re-authorize.
+- Re-authorizing from this Windows PC: run `rclone config create gdrive drive scope=drive.file --config <temp file>`, read the token with `rclone config dump`, send it base64-encoded on stdin to a server-side script (PowerShell 5.1 drops quotes in native args and adds a BOM + CRLF to piped text), and use `rclone config update ... --non-interactive` there (without it, it waits for the Shared Drive question).
+- Restore: `~/bin/rclone lsf dhkcrypt:`, `~/bin/rclone copy dhkcrypt:<file> /tmp/`, then `gunzip -c /tmp/<file> | psql "$URL"` into an empty database. On a new machine recreate both remotes first (Drive token + the two crypt passwords). Test locally with a fake `pg_dump` on `PATH` plus `APP_DIR`/`BACKUP_DIR` overrides.
 
 ### Loading data into production (bulk imports, one-off fixes)
 
