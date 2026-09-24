@@ -3,13 +3,17 @@
 #   30 2 * * * /home/ubuntu/dhevakij/deploy/backup-db.sh >> /home/ubuntu/backups/backup.log 2>&1
 # Keeps KEEP_DAYS days of nightly dumps. Only files named dhevakij-nightly-* are
 # rotated, so the manual pre-deploy backups in the same folder are left alone.
-# Optional off-machine copy: set OFFSITE to an rclone remote path (e.g. "gdrive:dhevakij-backups").
+# Optional off-machine copy: set OFFSITE to an rclone remote path (e.g. "dhkcrypt:");
+# nightly files older than OFFSITE_KEEP_DAYS are pruned there.
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/home/ubuntu/dhevakij}"
 BACKUP_DIR="${BACKUP_DIR:-/home/ubuntu/backups}"
 KEEP_DAYS="${KEEP_DAYS:-14}"
 OFFSITE="${OFFSITE:-}"
+OFFSITE_KEEP_DAYS="${OFFSITE_KEEP_DAYS:-90}"
+# cron's PATH is /usr/bin:/bin; rclone lives in ~/bin (no sudo on this box).
+RCLONE="${RCLONE:-$(command -v rclone || echo "$HOME/bin/rclone")}"
 
 log() { echo "$(date '+%F %T') $*"; }
 
@@ -41,5 +45,7 @@ log "OK $out ($size bytes)"
 find "$BACKUP_DIR" -maxdepth 1 -name 'dhevakij-nightly-*.sql.gz' -mtime +"$KEEP_DAYS" -print -delete | sed "s/^/$(date '+%F %T') removed /"
 
 if [ -n "$OFFSITE" ]; then
-  rclone copy "$out" "$OFFSITE" && log "copied to $OFFSITE" || { log "ERROR: offsite copy failed"; exit 1; }
+  "$RCLONE" copy "$out" "$OFFSITE" && log "copied to $OFFSITE" || { log "ERROR: offsite copy failed"; exit 1; }
+  "$RCLONE" delete "$OFFSITE" --min-age "${OFFSITE_KEEP_DAYS}d" --include 'dhevakij-nightly-*.sql.gz' \
+    || log "WARN: offsite prune failed"
 fi
