@@ -50,4 +50,7 @@ cron.schedule("0 8 * * *", () => hit("/api/cron/daily-summary"), { timezone: TZ 
 // Monthly, 1st at 01:00 Bangkok: fuel monthly report to LINE admins.
 cron.schedule("0 1 1 * *", () => hit("/api/cron/fuel-monthly"), { timezone: TZ });
 
+// Monthly, 1st at 08:30 Bangkok: last month's business summary to LINE admins.
+cron.schedule("30 8 1 * *", () => hit("/api/cron/monthly-summary"), { timezone: TZ });
+
 console.log(`[cron] worker started; base=${BASE} tz=${TZ}`);

@@ -37,12 +37,14 @@ export function FleetAgingChart({ data }: { data: { bucket: string; amount: numb
 
 export function FinanceChart({
   data,
+  title = "รายรับ vs ค่าใช้จ่าย รายเดือน",
 }: {
   data: { month: string; income: number; expense: number }[];
+  title?: string;
 }) {
   return (
     <Card>
-      <div className="font-medium mb-2">รายรับ vs ค่าใช้จ่าย รายเดือน</div>
+      <div className="font-medium mb-2">{title}</div>
       <ResponsiveContainer width="100%" height={280}>
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />

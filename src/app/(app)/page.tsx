@@ -4,8 +4,12 @@ import { baht, num, thDateTime } from "@/lib/format";
 import { getToday } from "@/lib/today";
 import { getSession, isAdmin } from "@/lib/auth";
 import { groups } from "./nav";
+import { FinanceChart } from "./fleet/Charts";
+import { monthTrend } from "@/lib/fleet/trend";
 
 export const dynamic = "force-dynamic";
+
+const TH_MONTH = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 
 // Literal class strings so Tailwind picks them up.
 const accents: Record<string, { card: string; badge: string; hover: string }> = {
@@ -44,7 +48,8 @@ function Tile({ href, icon, label, value, sub, alert }: { href: string; icon: st
 // Home: what needs attention today (same numbers as the 08:00 LINE summary),
 // then every sidebar category as a menu.
 export default async function Home() {
-  const [t, session] = await Promise.all([getToday(), getSession()]);
+  const thisMonth = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 7);
+  const [t, session, trend] = await Promise.all([getToday(), getSession(), monthTrend(thisMonth, 12)]);
   const admin = !!session && isAdmin(session);
   const renewals = t.renewals.expired + t.renewals.due30;
   const categories = groups
@@ -75,6 +80,17 @@ export default async function Home() {
             alert={!t.backup || t.backup.stale}
           />
         )}
+      </div>
+
+      <div className="mb-8">
+        <FinanceChart
+          title="รายรับ vs ค่าน้ำมัน+ซ่อม 12 เดือน"
+          data={trend.map((p) => ({
+            month: `${TH_MONTH[Number(p.month.slice(5)) - 1]} ${String(Number(p.month.slice(2, 4)) + 43)}`,
+            income: p.income,
+            expense: p.fuel + p.repair,
+          }))}
+        />
       </div>
 
       <h2 className="mb-3 text-sm font-semibold text-slate-300">เมนูตามหมวด</h2>
