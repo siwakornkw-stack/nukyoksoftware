@@ -120,6 +120,10 @@ model Notification {
   Message String
   IsRead Boolean @default(false)
   CreatedTime DateTime @default(now())
+  // What the notification is about ("tax|<TaxId>"); a repeat reminder updates
+  // this row instead of adding another one.
+  Key String? @db.VarChar(200)
+  @@unique([CustomerId, Key])
   @@index([CustomerId])
 }
 
@@ -233,6 +237,7 @@ model Vehicle {
   ImageVehicle ImageVehicle[]
   IncomeVehicle IncomeVehicle[]
   Aliases VehicleAlias[]
+  FuelBills FuelBill[]
   @@index([TenantId])
   @@index([VehicleId])
 }
@@ -700,6 +705,10 @@ model FuelBill {
   status String @default("ok") // ok | suspect | extract_failed
   suspectReasons String?
   createdAt DateTime @default(now())
+  // Company vehicle the plate on the receipt resolved to (null = unmatched).
+  VehicleId String? @db.VarChar(36)
+  Vehicle Vehicle? @relation(fields: [VehicleId], references: [VehicleId])
+  @@index([VehicleId])
   @@index([lineUserId])
   @@index([imageHash])
   @@index([receiptNo])
@@ -778,10 +787,29 @@ model AssetLoan {
   BorrowerName String
   Location String
   BorrowedAt DateTime @default(now())
+  DueAt DateTime? // expected return date; overdue loans are reminded daily
   ReturnedAt DateTime?
   Note String?
   CreatedByUsername String?
   UpdatedByUsername String?
   @@index([AssetId])
   @@index([AssetId, ReturnedAt])
+}
+
+// ======================================================================
+// == AUDIT LOG (before/after of money-related changes) =================
+// ======================================================================
+
+model AuditLog {
+  AuditLogId String @id @default(uuid()) @db.VarChar(36)
+  TenantId String @db.VarChar(36)
+  Entity String @db.VarChar(60) // "InstallmentsVehicle", "DebtRecord", ...
+  EntityId String @db.VarChar(100)
+  Action String @db.VarChar(30) // create | update | delete | pay | ...
+  Before Json?
+  After Json?
+  Username String?
+  CreatedAt DateTime @default(now())
+  @@index([TenantId, CreatedAt])
+  @@index([Entity, EntityId])
 }

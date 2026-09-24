@@ -7,6 +7,8 @@ import { dec } from "@/lib/fleet/queries";
 export const dynamic = "force-dynamic";
 
 interface Reminder {
+  key: string;
+  title: string;
   plate: string;
   text: string;
   lineUserId: string | null;
@@ -71,25 +73,31 @@ export async function GET(req: Request) {
 
   const reminders: Reminder[] = [];
   for (const t of taxes)
-    reminders.push({ plate: plate(t.Vehicle), lineUserId: t.Vehicle.VehicleDriver?.LineUserId ?? null, text: `ภาษีรถ ${plate(t.Vehicle)} จะหมดอายุ ${day(t.EndDate)}` });
+    reminders.push({ key: `tax|${t.TaxId}`, title: "ภาษีรถ", plate: plate(t.Vehicle), lineUserId: t.Vehicle.VehicleDriver?.LineUserId ?? null, text: `ภาษีรถ ${plate(t.Vehicle)} จะหมดอายุ ${day(t.EndDate)}` });
   for (const c of cmis)
-    reminders.push({ plate: plate(c.Vehicle), lineUserId: c.Vehicle.VehicleDriver?.LineUserId ?? null, text: `พ.ร.บ. รถ ${plate(c.Vehicle)} จะหมดอายุ ${day(c.EndDate)}` });
+    reminders.push({ key: `cmi|${c.CompulsoryMotorInsuranceVehicleId}`, title: "พ.ร.บ.", plate: plate(c.Vehicle), lineUserId: c.Vehicle.VehicleDriver?.LineUserId ?? null, text: `พ.ร.บ. รถ ${plate(c.Vehicle)} จะหมดอายุ ${day(c.EndDate)}` });
   for (const p of policies)
-    reminders.push({ plate: plate(p.Vehicle), lineUserId: p.Vehicle.VehicleDriver?.LineUserId ?? null, text: `ประกันภัยรถ ${plate(p.Vehicle)} จะหมดอายุ ${day(p.EndDate)}` });
+    reminders.push({ key: `ins|${p.InsurancePolicyVehicleId}`, title: "ประกันภัย", plate: plate(p.Vehicle), lineUserId: p.Vehicle.VehicleDriver?.LineUserId ?? null, text: `ประกันภัยรถ ${plate(p.Vehicle)} จะหมดอายุ ${day(p.EndDate)}` });
   for (const o of oils)
-    reminders.push({ plate: plate(o.Vehicle), lineUserId: o.Vehicle.VehicleDriver?.LineUserId ?? null, text: `ถึงกำหนดเปลี่ยนถ่ายน้ำมันเครื่องรถ ${plate(o.Vehicle)} (${o.DueDate ? day(o.DueDate) : "-"})` });
+    reminders.push({ key: `oil|${o.DrainTheOilVehicleId}`, title: "น้ำมันเครื่อง", plate: plate(o.Vehicle), lineUserId: o.Vehicle.VehicleDriver?.LineUserId ?? null, text: `ถึงกำหนดเปลี่ยนถ่ายน้ำมันเครื่องรถ ${plate(o.Vehicle)} (${o.DueDate ? day(o.DueDate) : "-"})` });
   for (const i of overdue)
-    reminders.push({ plate: plate(i.Vehicle), lineUserId: i.Vehicle.VehicleDriver?.LineUserId ?? null, text: `ค่างวดรถ ${plate(i.Vehicle)} งวดที่ ${i.InstallmentNumber} เกินกำหนด (${day(i.DueDate)}) ยอด ${dec(i.Amount).toLocaleString()} บาท` });
+    reminders.push({ key: `inst|${i.InstallmentsVehicleId}`, title: "ค่างวด", plate: plate(i.Vehicle), lineUserId: i.Vehicle.VehicleDriver?.LineUserId ?? null, text: `ค่างวดรถ ${plate(i.Vehicle)} งวดที่ ${i.InstallmentNumber} เกินกำหนด (${day(i.DueDate)}) ยอด ${dec(i.Amount).toLocaleString()} บาท` });
 
-  // Persist notifications to an admin customer if available.
-  const admin = await prisma.customer.findFirst({
-    where: { TenantId: T, Role: "admin", Status: "active" },
+  // In-app notifications for every active user. One row per (user, key): a
+  // repeat reminder refreshes that row and marks it unread again, so the list
+  // shows each issue once instead of growing by a copy every day.
+  const users = await prisma.customer.findMany({
+    where: { TenantId: T, Status: "active" },
     select: { CustomerId: true },
   });
-  if (admin && reminders.length) {
-    await prisma.notification.createMany({
-      data: reminders.map((r) => ({ CustomerId: admin.CustomerId, Title: "แจ้งเตือน", Message: r.text })),
-    });
+  for (const u of users) {
+    for (const r of reminders) {
+      await prisma.notification.upsert({
+        where: { CustomerId_Key: { CustomerId: u.CustomerId, Key: r.key } },
+        create: { CustomerId: u.CustomerId, Key: r.key, Title: r.title, Message: r.text },
+        update: { Title: r.title, Message: r.text, IsRead: false, CreatedTime: now },
+      });
+    }
   }
 
   // Push to drivers via LINE when we have a token + their userId.

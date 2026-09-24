@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -9,6 +9,7 @@ const groups: { title: string | null; items: { href: string; label: string; icon
     title: null,
     items: [
       { href: "/", label: "ภาพรวม", icon: "🏠" },
+      { href: "/notifications", label: "การแจ้งเตือน", icon: "🔔" },
       { href: "/help", label: "วิธีใช้งาน", icon: "📖" },
     ],
   },
@@ -91,7 +92,7 @@ function Brand() {
   );
 }
 
-function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+function NavLinks({ pathname, onNavigate, unread }: { pathname: string; onNavigate?: () => void; unread: number }) {
   const current = activeHref(pathname);
   return (
     <nav className="flex flex-col gap-4 overflow-y-auto">
@@ -117,6 +118,9 @@ function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () 
               >
                 <span className="text-base">{n.icon}</span>
                 {n.label}
+                {n.href === "/notifications" && unread > 0 && (
+                  <span className="ml-auto rounded-full bg-rose-500 px-1.5 text-[11px] font-semibold text-white">{unread > 99 ? "99+" : unread}</span>
+                )}
               </Link>
             );
           })}
@@ -145,6 +149,20 @@ export function Sidebar({ userName, role }: { userName: string; role?: string })
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [shownFor, setShownFor] = useState(pathname);
+  const [unread, setUnread] = useState(0);
+
+  // Layouts persist across client navigation, so refetch the count on every
+  // page change and whenever the notifications page marks something read.
+  useEffect(() => {
+    const refresh = () =>
+      fetch("/api/notifications?count=1")
+        .then((r) => (r.ok ? r.json() : { unread: 0 }))
+        .then((d) => setUnread(d.unread ?? 0))
+        .catch(() => {});
+    refresh();
+    window.addEventListener("notifications-changed", refresh);
+    return () => window.removeEventListener("notifications-changed", refresh);
+  }, [pathname]);
 
   // Below md the aside is hidden, so without this drawer a phone has no way to
   // reach any module or to log out. Reset it during render (not in an effect)
@@ -160,7 +178,7 @@ export function Sidebar({ userName, role }: { userName: string; role?: string })
         <div className="mb-5 px-2">
           <Brand />
         </div>
-        <NavLinks pathname={pathname} />
+        <NavLinks pathname={pathname} unread={unread} />
         <div className="mt-auto pt-4 border-t border-slate-800/60">
           <UserBlock userName={userName} role={role} />
         </div>
@@ -198,7 +216,7 @@ export function Sidebar({ userName, role }: { userName: string; role?: string })
                 ✕
               </button>
             </div>
-            <NavLinks pathname={pathname} onNavigate={() => setOpen(false)} />
+            <NavLinks pathname={pathname} unread={unread} onNavigate={() => setOpen(false)} />
             <div className="mt-auto pt-4 border-t border-slate-800/60">
               <UserBlock userName={userName} role={role} />
             </div>
