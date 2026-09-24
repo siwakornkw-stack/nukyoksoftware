@@ -14,6 +14,7 @@ export default function RecordsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [page, setPage] = useState(1);
   const [err, setErr] = useState("");
+  const [stmtCustomer, setStmtCustomer] = useState("");
 
   useEffect(() => {
     fetch("/api/debt/records")
@@ -34,6 +35,8 @@ export default function RecordsPage() {
       );
     });
   }, [records, q, statusFilter]);
+
+  const customers = useMemo(() => [...new Set(records.map((r) => r.customer).filter(Boolean))].sort((a, b) => a.localeCompare(b, "th")), [records]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -64,10 +67,24 @@ export default function RecordsPage() {
         title="รายการหนี้"
         subtitle={`${filtered.length} รายการ`}
         action={
-          // eslint-disable-next-line @next/next/no-html-link-for-pages -- file download, not a page
-          <a href="/api/export/debt" className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">
-            ส่งออก Excel
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* One customer's open items, e.g. to attach to a collection letter. */}
+            <select className="field py-1 text-sm max-w-56" value={stmtCustomer} onChange={(e) => setStmtCustomer(e.target.value)}>
+              <option value="">- statement ลูกค้า -</option>
+              {customers.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+            {stmtCustomer && (
+              <a href={`/api/export/debt-statement?customer=${encodeURIComponent(stmtCustomer)}`} className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">
+                ดาวน์โหลด statement
+              </a>
+            )}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- file download, not a page */}
+            <a href="/api/export/debt" className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">
+              ส่งออก Excel
+            </a>
+          </div>
         }
       />
 

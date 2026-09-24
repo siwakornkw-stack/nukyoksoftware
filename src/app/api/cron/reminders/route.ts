@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { dec } from "@/lib/fleet/queries";
 import { bangkokToday, shouldRemind as remindOn } from "@/lib/fleet/schedule";
+import { DEBT_CLOSED } from "@/lib/today";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +77,28 @@ export async function GET(req: Request) {
     reminders.push({ key: `oil|${o.DrainTheOilVehicleId}`, title: "น้ำมันเครื่อง", plate: plate(o.Vehicle), lineUserId: o.Vehicle.VehicleDriver?.LineUserId ?? null, text: `ถึงกำหนดเปลี่ยนถ่ายน้ำมันเครื่องรถ ${plate(o.Vehicle)} (${o.DueDate ? day(o.DueDate) : "-"})` });
   for (const i of overdue)
     reminders.push({ key: `inst|${i.InstallmentsVehicleId}`, title: "ค่างวด", plate: plate(i.Vehicle), lineUserId: i.Vehicle.VehicleDriver?.LineUserId ?? null, text: `ค่างวดรถ ${plate(i.Vehicle)} งวดที่ ${i.InstallmentNumber} เกินกำหนด (${day(i.DueDate)}) ยอด ${dec(i.Amount).toLocaleString()} บาท` });
+
+  // Customer debt (current BillingNote version) crossing 30/60/90 days overdue:
+  // in-app, once per threshold (the morning summary carries the running totals).
+  const debtVersion = await prisma.debtVersion.findFirst({ where: { isCurrent: true }, select: { id: true } });
+  if (debtVersion) {
+    const todayISO = today.toISOString().slice(0, 10);
+    const openDebt = await prisma.debtRecord.findMany({
+      where: { versionId: debtVersion.id, dueDate: { lt: todayISO }, status: { notIn: DEBT_CLOSED } },
+      select: { docNo: true, customer: true, total: true, dueDate: true, salesperson: true },
+    });
+    for (const d of openDebt) {
+      const days = Math.round((today.getTime() - Date.parse(`${d.dueDate}T00:00:00Z`)) / 86400000);
+      if (days !== 30 && days !== 60 && days !== 90) continue;
+      reminders.push({
+        key: `debt|${d.docNo}|${days}`,
+        title: "หนี้ลูกค้า",
+        plate: "",
+        lineUserId: null,
+        text: `หนี้ ${d.customer} เอกสาร ${d.docNo} เกินกำหนด ${days} วัน ยอด ${dec(d.total).toLocaleString()} บาท${d.salesperson ? ` (พนักงานขาย ${d.salesperson})` : ""}`,
+      });
+    }
+  }
 
   // Borrowed equipment past its return date: in-app only (borrowers have no LINE id).
   const lateLoans = await prisma.assetLoan.findMany({

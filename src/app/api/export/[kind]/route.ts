@@ -8,6 +8,7 @@ import { getCurrentRecords } from "@/lib/debt/store";
 import { KIND_LABEL, STATUS_LABEL, loadInsuranceRecords } from "@/lib/fleet/insurance-report";
 import { loadFuelRecords, fuelFilterOptions, resolveRange } from "@/lib/fleet/fuel-report";
 import { vehiclePnl } from "@/lib/fleet/vehicle-pnl";
+import { DEBT_CLOSED } from "@/lib/today";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,29 @@ const EXPORTS: Record<string, (q: URLSearchParams) => Promise<{ name: string; ro
         เกินกำหนดวัน: r.dueDate && Date.parse(r.dueDate) < today.getTime() ? Math.floor((today.getTime() - Date.parse(r.dueDate)) / DAY_MS) : null,
       })),
     };
+  },
+
+  // One customer's open items (not paid / cancelled) for a collection letter.
+  async "debt-statement"(q) {
+    const customer = (q.get("customer") ?? "").trim();
+    const today = bkkToday();
+    const { records } = await getCurrentRecords();
+    const open = records.filter((r) => r.customer === customer && !DEBT_CLOSED.includes(r.status));
+    const overdue = (r: (typeof open)[number]) =>
+      r.dueDate && Date.parse(r.dueDate) < today.getTime() ? Math.floor((today.getTime() - Date.parse(r.dueDate)) / DAY_MS) : null;
+    const rows: Row[] = open
+      .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
+      .map((r) => ({
+        เลขที่เอกสาร: r.docNo,
+        วันที่: r.date ?? "",
+        ครบกำหนด: r.dueDate ?? "",
+        โครงการ: r.project,
+        ยอดรวม: r.total,
+        สถานะ: r.status,
+        เกินกำหนดวัน: overdue(r),
+      }));
+    rows.push({ เลขที่เอกสาร: "รวม", วันที่: "", ครบกำหนด: "", โครงการ: `${open.length} รายการ`, ยอดรวม: open.reduce((a, r) => a + r.total, 0), สถานะ: "", เกินกำหนดวัน: null });
+    return { name: `statement-${customer || "unknown"}`, rows };
   },
 
   async insurance() {
@@ -137,7 +161,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ kind: string }>
   return new Response(new Uint8Array(buf), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${name}.xlsx"`,
+      // ASCII fallback plus the UTF-8 name, so Thai customer names survive.
+      "Content-Disposition": `attachment; filename="${name.replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "")}.xlsx"; filename*=UTF-8''${encodeURIComponent(name)}.xlsx`,
     },
   });
 }
