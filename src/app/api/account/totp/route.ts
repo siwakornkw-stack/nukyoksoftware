@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import QRCode from "qrcode";
 import { prisma } from "@/lib/db";
-import { getSession, verifyPassword } from "@/lib/auth";
+import { getSession, verifyPassword, REQUIRE_ADMIN_MFA } from "@/lib/auth";
 import { newTotpSecret, otpauthUri, verifyTotp } from "@/lib/totp";
 import { audit } from "@/lib/audit";
 
@@ -14,8 +14,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  // Admins must have it (the app layout sends them here until they do).
-  return NextResponse.json({ enabled: !!s.mfa, required: s.role === "admin" });
+  // Admins must have it when REQUIRE_ADMIN_MFA (the app layout sends them here until they do).
+  return NextResponse.json({ enabled: !!s.mfa, required: REQUIRE_ADMIN_MFA && s.role === "admin" });
 }
 
 export async function POST(req: Request) {

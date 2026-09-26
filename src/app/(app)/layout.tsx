@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { getSession } from "@/lib/auth";
+import { getSession, REQUIRE_ADMIN_MFA } from "@/lib/auth";
 import { Sidebar } from "./Sidebar";
 import { MfaGuard } from "./MfaGuard";
 
@@ -15,7 +15,7 @@ export default async function AppLayout({
   // Admins must turn on two-step login before using anything but /account.
   // The layout only runs on a full load; MfaGuard repeats the check on
   // client-side navigation.
-  const needMfa = session.role === "admin" && !session.mfa;
+  const needMfa = REQUIRE_ADMIN_MFA && session.role === "admin" && !session.mfa;
   const path = (await headers()).get("x-pathname") ?? "";
   if (needMfa && path && !path.startsWith("/account")) redirect("/account");
   return (

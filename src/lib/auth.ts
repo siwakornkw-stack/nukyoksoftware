@@ -23,6 +23,11 @@ function getSecret(): string {
 const LIFETIME = process.env.JWT_ACCESS_LIFETIME || "7d";
 const COOKIE = "dvk_session";
 
+// true = admins without two-step login are held on /account until they turn it
+// on ((app)/layout.tsx). Off for now at the owner's request; users who enabled
+// it are still asked for a code at login.
+export const REQUIRE_ADMIN_MFA = false;
+
 export interface Session {
   sub: string; // customer id
   username: string;
