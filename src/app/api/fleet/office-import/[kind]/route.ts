@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { getSession } from "@/lib/auth";
 import { commitFuel, commitInsurance, previewFuel, previewInsurance, type Decision } from "@/lib/fleet/office-import";
+import { SheetError } from "@/lib/fleet/office-sheets";
 
 export const dynamic = "force-dynamic";
 
@@ -30,19 +31,24 @@ export async function POST(req: Request, ctx: { params: Promise<{ kind: string }
     return NextResponse.json({ error: "อ่านไฟล์ Excel ไม่ได้" }, { status: 400 });
   }
 
-  if (form!.get("action") !== "commit") {
-    const preview = await h.preview(wb);
-    if (!preview.items.length) {
-      return NextResponse.json({ error: "ไม่พบข้อมูลตามรูปแบบไฟล์ของออฟฟิศในไฟล์นี้" }, { status: 400 });
-    }
-    return NextResponse.json(preview);
-  }
-
-  let decisions: Record<string, Decision> = {};
   try {
-    decisions = JSON.parse(String(form!.get("decisions") || "{}"));
-  } catch {
-    return NextResponse.json({ error: "ข้อมูลการจับคู่รถไม่ถูกต้อง" }, { status: 400 });
+    if (form!.get("action") !== "commit") {
+      const preview = await h.preview(wb);
+      if (!preview.items.length) {
+        return NextResponse.json({ error: "ไม่พบข้อมูลตามรูปแบบไฟล์ของออฟฟิศในไฟล์นี้" }, { status: 400 });
+      }
+      return NextResponse.json(preview);
+    }
+
+    let decisions: Record<string, Decision> = {};
+    try {
+      decisions = JSON.parse(String(form!.get("decisions") || "{}"));
+    } catch {
+      return NextResponse.json({ error: "ข้อมูลการจับคู่รถไม่ถูกต้อง" }, { status: 400 });
+    }
+    return NextResponse.json(await h.commit(wb, decisions, s.username, file.name));
+  } catch (e) {
+    if (e instanceof SheetError) return NextResponse.json({ error: e.message }, { status: 400 });
+    throw e;
   }
-  return NextResponse.json(await h.commit(wb, decisions, s.username, file.name));
 }

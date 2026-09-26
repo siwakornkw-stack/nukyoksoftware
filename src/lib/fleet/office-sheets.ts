@@ -28,6 +28,22 @@ function toDate(v: unknown): string | null {
   return toISO(normalizeDate(v));
 }
 
+// A cell that holds a date the database cannot store (e.g. "20/8/25669", a
+// typo for 2569, is year 25126 after the Buddhist-era shift). Reported at
+// preview so the office fixes the file, instead of the commit failing whole.
+export class SheetError extends Error {}
+
+const plausible = (iso: string) => {
+  const y = Number(iso.match(/^(\d{4})-/)?.[1]);
+  return y >= 2000 && y <= 2100;
+};
+
+function cellText(v: unknown): string {
+  if (typeof v !== "number") return String(v);
+  const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+  return isNaN(d.getTime()) ? String(v) : `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${d.getUTCFullYear()}`;
+}
+
 function sheetRows(wb: WorkBook, name: string): Cell[][] {
   return XLSX.utils.sheet_to_json<Cell[]>(wb.Sheets[name], { header: 1, defval: "", raw: true });
 }
@@ -57,6 +73,7 @@ export interface FuelSheet {
 
 export function parseFuelWorkbook(wb: WorkBook): FuelSheet[] {
   const out: FuelSheet[] = [];
+  const bad: string[] = [];
   for (const name of wb.SheetNames) {
     const rows = sheetRows(wb, name);
     const hi = rows.findIndex((r) => squash(r[0]).startsWith("วัน") && r.some((c) => squash(c).includes("จำนวนเงิน")));
@@ -90,9 +107,13 @@ export function parseFuelWorkbook(wb: WorkBook): FuelSheet[] {
     }
 
     const data: FuelRow[] = [];
-    for (const r of rows.slice(hi + 1)) {
+    for (const [i, r] of rows.slice(hi + 1).entries()) {
       const date = toDate(r[0]);
       const amount = toNum(at(r, c.amount));
+      if (amount && /\d/.test(String(r[0])) && !(date && plausible(date))) {
+        bad.push(`แผ่น "${name}" แถว ${hi + i + 2}: วันที่ "${cellText(r[0])}" ไม่ถูกต้อง`);
+        continue;
+      }
       if (!date || !amount) continue; // blank lines, the totals row, signatures
       data.push({
         date,
@@ -108,6 +129,7 @@ export function parseFuelWorkbook(wb: WorkBook): FuelSheet[] {
     }
     if (data.length) out.push({ sheet: name, label, driver, model, period, rows: data });
   }
+  if (bad.length) throw new SheetError(`แก้ไฟล์ก่อนนำเข้า: ${bad.join(" · ")}`);
   return out;
 }
 
