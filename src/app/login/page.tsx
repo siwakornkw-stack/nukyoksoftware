@@ -1,10 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -23,8 +21,11 @@ export default function LoginPage() {
     });
     setLoading(false);
     if (res.ok) {
-      router.push("/");
-      router.refresh();
+      // Full load, not router.push: an admin without two-step login gets a
+      // redirect("/account") from (app)/layout.tsx, and that redirect during a
+      // client navigation out of /login leaves a blank page.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.assign("/");
     } else {
       const j = await res.json().catch(() => ({}));
       // Password was right; the account also wants a code from the authenticator app.
