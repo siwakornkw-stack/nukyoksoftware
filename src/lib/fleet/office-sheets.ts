@@ -200,3 +200,114 @@ export function parseInsuranceWorkbook(wb: WorkBook): InsuranceRow[] {
   }
   return out;
 }
+
+export interface InstallmentItem {
+  no: number;
+  due: string;
+  paid: boolean;
+}
+
+export interface InstallmentRow {
+  key: string; // stable id inside one file: "<sheet>!<row>"
+  sheet: string;
+  label: string; // plate, or the machine code ("SY135") when the row has no plate
+  asset: string;
+  payNote: string;
+  amount: number;
+  periods: number;
+  dueDay: number | null;
+  items: InstallmentItem[];
+  repeated: string[]; // "2/48 (08/69)": a number the row already used in an earlier month
+}
+
+// "รถแม็คโคร SANY / SY35 (PC35)" -> "SY35", "รถแม็คโคร KOMATSU / (PC130-10M0)" -> "PC130-10M0",
+// "รถแม็คโคร CAT313GC" -> "CAT313GC". Only the text after the last "/": the bracket
+// is an alias of another model ("SK130-10E (PC130)") and would match the wrong machine.
+function machineCode(asset: string): string {
+  if (!asset.includes("/")) return asset.match(/[A-Za-z][\w-]*\d[\w-]*/g)?.pop() ?? asset;
+  const tail = asset.split("/").pop()!.trim();
+  return tail.replace(/\(.*?\)/g, "").trim() || tail.replace(/[()]/g, "").trim();
+}
+
+// The office greens a month cell once that installment is paid.
+function isGreen(cell: XLSX.CellObject | undefined): boolean {
+  const s = cell?.s as { patternType?: string; fgColor?: { rgb?: string } } | undefined;
+  const rgb = s?.patternType === "solid" ? s.fgColor?.rgb?.slice(-6) : undefined;
+  if (!rgb || !/^[0-9a-f]{6}$/i.test(rgb)) return false;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(rgb.slice(i, i + 2), 16));
+  return g > r && g > b;
+}
+
+// ตารางทะเบียนเครื่องจักร: one row per vehicle, month columns ("เดือน 06/69") holding
+// the installment number paid that month ("43/48"). Needs the workbook read with
+// cellStyles so the green fill is visible.
+export function parseInstallmentWorkbook(wb: WorkBook): InstallmentRow[] {
+  const out: InstallmentRow[] = [];
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets[name];
+    const rows = sheetRows(wb, name);
+    const hi = rows.findIndex((r) => r.some((c) => squash(c).includes("รายการทรัพย์สิน")) && r.some((c) => /^เดือน\d/.test(squash(c))));
+    if (hi < 0) continue;
+
+    const h = rows[hi].map(squash);
+    const c = {
+      asset: findCol(h, (x) => x.includes("รายการทรัพย์สิน")),
+      plate: findCol(h, (x) => x.includes("ทะเบียน")),
+      pay: findCol(h, (x) => x.includes("วันที่ชำระ")),
+      amount: findCol(h, (x) => x.includes("จำนวนเงิน")),
+    };
+    const months = h.flatMap((x, i) => {
+      const m = x.match(/^เดือน(\d{1,2})\/(\d{2}|\d{4})$/);
+      if (!m) return [];
+      let y = Number(m[2]);
+      if (y < 100) y += 2500; // "06/69" is Buddhist era
+      return [{ col: i, label: `${m[1].padStart(2, "0")}/${m[2]}`, year: y - 543, month: Number(m[1]) }];
+    });
+    const at = (r: Cell[], i: number) => (i < 0 ? "" : r[i]);
+    const origin = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
+
+    rows.slice(hi + 1).forEach((r, i) => {
+      const asset = text(at(r, c.asset));
+      const plate = text(at(r, c.plate));
+      const amount = toNum(at(r, c.amount));
+      if (!(asset || plate) || !amount) return;
+
+      const payNote = text(at(r, c.pay));
+      const dm = payNote.match(/วันที่\s*(\d{1,2})/);
+      const dueDay = dm ? Number(dm[1]) : null;
+      const rowIdx = origin.s.r + hi + 1 + i;
+      const items: InstallmentItem[] = [];
+      const repeated: string[] = [];
+      let periods = 0;
+      for (const m of months) {
+        const n = String(r[m.col] ?? "").match(/^\s*(\d+)\s*\/\s*(\d+)\s*$/);
+        if (!n) continue;
+        const no = Number(n[1]);
+        periods = Math.max(periods, Number(n[2]));
+        if (items.some((x) => x.no === no)) {
+          repeated.push(`${no}/${n[2]} (${m.label})`);
+          continue;
+        }
+        const last = new Date(Date.UTC(m.year, m.month, 0)).getUTCDate();
+        const due = new Date(Date.UTC(m.year, m.month - 1, Math.min(dueDay ?? 1, last))).toISOString().slice(0, 10);
+        const cell = ws[XLSX.utils.encode_cell({ r: rowIdx, c: origin.s.c + m.col })];
+        items.push({ no, due, paid: isGreen(cell) });
+      }
+      if (!items.length) return;
+
+      out.push({
+        key: `${name}!${rowIdx + 1}`,
+        sheet: name,
+        label: plate && /\d/.test(plate) ? plate : machineCode(asset) || plate,
+        asset,
+        payNote,
+        amount,
+        periods,
+        dueDay,
+        items,
+        repeated,
+      });
+    });
+  }
+  return out;
+}

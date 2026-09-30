@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { PageHeader, Card } from "@/components/ui";
 import { baht } from "@/lib/format";
@@ -99,10 +100,15 @@ function InstallmentsInner() {
         title="ค่างวด / ลูกหนี้"
         subtitle={vehicle ? "กรองเฉพาะรถที่เลือก" : `รวม ${baht(total)}`}
         action={
-          // eslint-disable-next-line @next/next/no-html-link-for-pages -- file download, not a page
-          <a href="/api/export/installments" className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">
-            ส่งออก Excel
-          </a>
+          <div className="flex gap-2">
+            <Link href="/fleet/installments/import" className="rounded-lg px-3 py-1.5 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium">
+              นำเข้า Excel
+            </Link>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- file download, not a page */}
+            <a href="/api/export/installments" className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">
+              ส่งออก Excel
+            </a>
+          </div>
         }
       />
 

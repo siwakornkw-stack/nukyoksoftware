@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { getSession } from "@/lib/auth";
-import { commitFuel, commitInsurance, previewFuel, previewInsurance, type Decision } from "@/lib/fleet/office-import";
+import {
+  commitFuel,
+  commitInstallments,
+  commitInsurance,
+  previewFuel,
+  previewInstallments,
+  previewInsurance,
+  type Decision,
+} from "@/lib/fleet/office-import";
 import { SheetError } from "@/lib/fleet/office-sheets";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +17,7 @@ export const dynamic = "force-dynamic";
 const HANDLERS = {
   fuel: { preview: previewFuel, commit: commitFuel },
   insurance: { preview: previewInsurance, commit: commitInsurance },
+  installments: { preview: previewInstallments, commit: commitInstallments },
 };
 
 // multipart: file, action=preview|commit, decisions={"<item key>": "new"|"skip"|VehicleId}
@@ -26,7 +35,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ kind: string }
 
   let wb: XLSX.WorkBook;
   try {
-    wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+    // cellStyles: the installment sheet marks paid months with a green fill.
+    wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellStyles: true });
   } catch {
     return NextResponse.json({ error: "อ่านไฟล์ Excel ไม่ได้" }, { status: 400 });
   }

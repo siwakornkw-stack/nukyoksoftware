@@ -35,12 +35,15 @@ export function OfficeImport({
   itemLabel,
   format,
   links,
+  updateLabel,
 }: {
-  kind: "fuel" | "insurance";
+  kind: "fuel" | "insurance" | "installments";
   itemLabel: string;
   format: ReactNode;
   links: { href: string; label: string }[];
+  updateLabel?: string; // what "notes" counts for this kind; default: insurance note updates
 }) {
+  const upd = updateLabel ?? "อัปเดตหมายเหตุ";
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -159,7 +162,7 @@ export function OfficeImport({
               <div className="text-slate-400">รถที่สร้างใหม่</div>
             </div>
           </div>
-          {!!result.notesUpdated && <div className="mt-3 text-sm text-sky-300">อัปเดตหมายเหตุ {result.notesUpdated} รายการ</div>}
+          {!!result.notesUpdated && <div className="mt-3 text-sm text-sky-300">{upd} {result.notesUpdated} รายการ</div>}
           <div className="mt-4 flex flex-wrap gap-2">
             {links.map((l) => (
               <Link key={l.href} href={l.href} className="rounded-lg px-3 py-1.5 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium">
@@ -178,7 +181,12 @@ export function OfficeImport({
               <div className="text-xs text-slate-400 mt-0.5">
                 {preview.items.length} {itemLabel} · จับคู่รถเดิม {stats.match} · สร้างรถใหม่ {stats.create} · ข้าม {stats.skip}
                 {stats.dup > 0 && <span className="text-amber-300"> · ซ้ำกับที่มีอยู่ {stats.dup} รายการ (จะไม่บันทึกซ้ำ)</span>}
-                {stats.notes > 0 && <span className="text-sky-300"> · อัปเดตหมายเหตุ {stats.notes} รายการ (เก็บของเดิมไว้ในวงเล็บ)</span>}
+                {stats.notes > 0 && (
+                  <span className="text-sky-300">
+                    {" "}
+                    · {upd} {stats.notes} รายการ{updateLabel ? "" : " (เก็บของเดิมไว้ในวงเล็บ)"}
+                  </span>
+                )}
               </div>
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
@@ -220,7 +228,11 @@ export function OfficeImport({
                             มีอยู่แล้ว {i.dup}/{i.count} รายการ
                           </div>
                         )}
-                        {!!i.notes && d === i.match && <div className="text-xs text-sky-300 mt-0.5">หมายเหตุในไฟล์เปลี่ยน: จะอัปเดต {i.notes} รายการ</div>}
+                        {!!i.notes && d === i.match && (
+                          <div className="text-xs text-sky-300 mt-0.5">
+                            {updateLabel ? `จะ${updateLabel}` : "หมายเหตุในไฟล์เปลี่ยน: จะอัปเดต"} {i.notes} รายการ
+                          </div>
+                        )}
                       </td>
                       <td className="py-2">
                         <select
@@ -258,7 +270,7 @@ export function OfficeImport({
               disabled={busy || stats.rows === 0}
               className="rounded-lg px-4 py-2 text-sm bg-sky-500 hover:bg-sky-400 disabled:opacity-60 text-slate-900 font-medium"
             >
-              {busy ? "กำลังบันทึก..." : `ยืนยันนำเข้า ${stats.rows - stats.dup} รายการ${stats.notes ? ` · อัปเดตหมายเหตุ ${stats.notes}` : ""}`}
+              {busy ? "กำลังบันทึก..." : `ยืนยันนำเข้า ${stats.rows - stats.dup} รายการ${stats.notes ? ` · ${upd} ${stats.notes}` : ""}`}
             </button>
             <button type="button" onClick={() => setPreview(null)} className="rounded-lg px-4 py-2 text-sm bg-slate-800/60 hover:bg-slate-700/60">
               ยกเลิก

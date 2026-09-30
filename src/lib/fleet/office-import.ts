@@ -8,7 +8,15 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { baht, num, thDate } from "@/lib/format";
-import { parseFuelWorkbook, parseInsuranceWorkbook, type FuelRow, type InsuranceRow } from "./office-sheets";
+import { audit } from "@/lib/audit";
+import {
+  parseFuelWorkbook,
+  parseInstallmentWorkbook,
+  parseInsuranceWorkbook,
+  type FuelRow,
+  type InstallmentRow,
+  type InsuranceRow,
+} from "./office-sheets";
 import { guessPlate, plateKey, plateMatcher, plateText } from "./plates";
 import { VEHICLE_DEFAULTS } from "./vehicle-defaults";
 
@@ -23,7 +31,7 @@ export interface PreviewItem {
   match: string | null;
   count: number;
   dup: number;
-  notes?: number; // insurance: stored records whose note the file will update
+  notes?: number; // insurance: stored records whose note the file will update; installments: stored unpaid ones the file marks paid
 }
 
 export interface Preview {
@@ -420,4 +428,139 @@ export async function commitInsurance(
     });
     return { created, dup, skipped, vehiclesCreated: creator.count(), notesUpdated: changes.length };
   });
+}
+
+// -------------------------------------------------------- installments
+
+// Stored installments of these vehicles by "<VehicleId>|<number>" (unique in the DB).
+async function instExisting(db: Tx | typeof prisma, vids: string[]) {
+  const found = vids.length
+    ? await db.installmentsVehicle.findMany({
+        where: { VehicleId: { in: vids }, Vehicle: { TenantId: T } },
+        select: { InstallmentsVehicleId: true, VehicleId: true, InstallmentNumber: true, DatePay: true },
+      })
+    : [];
+  return new Map(found.map((f) => [`${f.VehicleId}|${f.InstallmentNumber}`, { id: f.InstallmentsVehicleId, paid: !!f.DatePay }]));
+}
+
+export async function previewInstallments(wb: WorkBook): Promise<Preview> {
+  const rows = parseInstallmentWorkbook(wb);
+  const { vehicles, match } = await loadMatcher();
+  const matched = rows.map((r) => match(r.label, r.asset));
+  const seen = await instExisting(prisma, matched.filter((v): v is string => !!v));
+
+  return {
+    vehicles: vehicleOptions(vehicles),
+    items: rows.map((r, i) => {
+      const vid = matched[i];
+      const stored = vid ? r.items.map((it) => seen.get(`${vid}|${it.no}`)) : [];
+      const nos = r.items.map((it) => it.no);
+      return {
+        key: r.key,
+        label: r.label,
+        detail: [
+          r.asset !== r.label && r.asset,
+          r.payNote,
+          r.dueDay ? null : "ไม่พบวันที่ชำระในไฟล์: ใช้วันที่ 1",
+          r.repeated.length && `เลขงวดซ้ำ ข้าม: ${r.repeated.join(", ")}`,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        summary: `งวด ${Math.min(...nos)}-${Math.max(...nos)}/${r.periods} (${r.items.length} งวด) · ${baht(r.amount)}/งวด · จ่ายแล้ว ${r.items.filter((it) => it.paid).length} งวด`,
+        newPlate: newPlateText(r.label),
+        match: vid,
+        count: r.items.length,
+        dup: stored.filter(Boolean).length,
+        notes: r.items.filter((it, k) => it.paid && stored[k] && !stored[k]!.paid).length,
+      };
+    }),
+  };
+}
+
+export async function commitInstallments(
+  wb: WorkBook,
+  decisions: Record<string, Decision>,
+  username: string,
+  fileName: string
+): Promise<CommitResult> {
+  const rows = parseInstallmentWorkbook(wb);
+  const { match, valid } = await loadMatcher();
+
+  const { result, paidIds } = await prisma.$transaction(async (tx) => {
+    const creator = vehicleCreator(tx, username);
+    const targets: { vid: string; row: InstallmentRow }[] = [];
+    let skipped = 0;
+    for (const r of rows) {
+      const auto = match(r.label, r.asset);
+      const d = decisions[r.key] ?? auto ?? "new";
+      if (d === "skip" || (d !== "new" && !valid.has(d))) {
+        skipped += r.items.length;
+        continue;
+      }
+      const vid = d === "new" ? await creator.create(r.label, r.asset) : d;
+      if (d !== "new" && d !== auto) await rememberAlias(tx, r.label, d, username);
+      targets.push({ vid, row: r });
+    }
+
+    const seen = await instExisting(tx, targets.map((t) => t.vid));
+    const data: Prisma.InstallmentsVehicleCreateManyInput[] = [];
+    const paidIds: { id: string; due: Date }[] = [];
+    let dup = 0;
+    for (const { vid, row } of targets) {
+      for (const it of row.items) {
+        const k = `${vid}|${it.no}`;
+        const old = seen.get(k);
+        const due = utc(it.due);
+        if (old) {
+          dup++;
+          // The file is the office's payment record: a green month marks a stored unpaid row paid.
+          if (it.paid && !old.paid) paidIds.push({ id: old.id, due });
+          continue;
+        }
+        seen.set(k, { id: "", paid: it.paid });
+        data.push({
+          VehicleId: vid,
+          Status: it.paid ? "paid" : "active",
+          InstallmentNumber: it.no,
+          DueDate: due,
+          Amount: row.amount,
+          // The file shows that it was paid, not when: the due date stands in.
+          DatePay: it.paid ? due : null,
+          CreatedByUsername: username,
+          UpdatedByUsername: username,
+        });
+      }
+    }
+    // skipDuplicates: a row someone added by hand since the check above is left alone.
+    const created = data.length ? (await tx.installmentsVehicle.createMany({ data, skipDuplicates: true })).count : 0;
+    const marked: typeof paidIds = [];
+    for (const p of paidIds) {
+      const { count } = await tx.installmentsVehicle.updateMany({
+        where: { InstallmentsVehicleId: p.id, DatePay: null },
+        data: { DatePay: p.due, Status: "paid", UpdatedByUsername: username, UpdatedAt: new Date() },
+      });
+      if (count) marked.push(p);
+    }
+
+    const all = rows.flatMap((r) => r.items.map(() => r.amount));
+    await tx.importLog.create({
+      data: {
+        TenantId: T,
+        FileName: fileName,
+        FileRows: all.length,
+        FileSum: all.reduce((a, n) => a + n, 0),
+        CreatedRows: created,
+        CreatedSum: data.reduce((a, r) => a + Number(r.Amount), 0),
+        DupRows: dup + data.length - created,
+        CreatedByUsername: username,
+      },
+    });
+    return {
+      result: { created, dup: dup + data.length - created, skipped, vehiclesCreated: creator.count(), notesUpdated: marked.length },
+      paidIds: marked,
+    };
+  });
+
+  for (const p of paidIds) await audit("installment", p.id, "pay-import", username, { DatePay: null }, { DatePay: p.due, file: fileName });
+  return result;
 }
