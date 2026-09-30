@@ -36,8 +36,17 @@ export function FuelRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  // Changing either odometer recomputes the distance; the distance itself can still be typed over.
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setForm((f) => ({ ...f, [k]: e.target.value }));
+    setForm((f) => {
+      const next = { ...f, [k]: e.target.value };
+      if (k !== "OdometerStart" && k !== "OdometerEnd") return next;
+      const start = Number(next.OdometerStart);
+      const end = Number(next.OdometerEnd);
+      return next.OdometerStart && next.OdometerEnd && start > 0 && end >= start
+        ? { ...next, Distance: String(Math.round((end - start) * 100) / 100) }
+        : next;
+    });
 
   async function save(e: React.FormEvent) {
     e.preventDefault();

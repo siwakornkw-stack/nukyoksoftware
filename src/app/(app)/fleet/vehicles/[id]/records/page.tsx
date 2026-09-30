@@ -87,6 +87,26 @@ export default function VehicleRecordsPage({ params }: { params: Promise<{ id: s
     }
   }, [def]);
 
+  // Fuel: a fill-up starts where the last one ended. Rows come newest first.
+  const lastOdo = useMemo(() => {
+    if (tab !== "gasoline") return "";
+    const r = rows.find((x) => Number(x.OdometerEnd) > 0);
+    return r ? String(Number(r.OdometerEnd)) : "";
+  }, [tab, rows]);
+
+  // Fuel: distance follows the two odometer fields; it can still be typed over.
+  function odoChange(e: React.FormEvent<HTMLFormElement>) {
+    const name = (e.target as HTMLInputElement).name;
+    if (tab !== "gasoline" || (name !== "OdometerStart" && name !== "OdometerEnd")) return;
+    const el = e.currentTarget.elements;
+    const val = (n: string) => (el.namedItem(n) as HTMLInputElement).value;
+    const start = Number(val("OdometerStart"));
+    const end = Number(val("OdometerEnd"));
+    if (val("OdometerStart") && val("OdometerEnd") && start > 0 && end >= start) {
+      (el.namedItem("Distance") as HTMLInputElement).value = String(Math.round((end - start) * 100) / 100);
+    }
+  }
+
   async function add(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSaving(true);
@@ -142,7 +162,7 @@ export default function VehicleRecordsPage({ params }: { params: Promise<{ id: s
 
       <Card className="mb-4">
         <div className="font-medium mb-3">เพิ่ม{def.label}</div>
-        <form ref={formRef} onSubmit={add} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <form ref={formRef} onSubmit={add} onChange={odoChange} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {def.fields.map((f) => (
             <label key={f.name} className="text-sm">
               <span className="block text-slate-400 mb-1">
@@ -166,6 +186,7 @@ export default function VehicleRecordsPage({ params }: { params: Promise<{ id: s
                   step={f.type === "money" || f.type === "decimal" ? "0.01" : undefined}
                   name={f.name}
                   required={!f.optional}
+                  defaultValue={f.name === "OdometerStart" ? lastOdo : undefined}
                   className="field w-full"
                 />
               )}
