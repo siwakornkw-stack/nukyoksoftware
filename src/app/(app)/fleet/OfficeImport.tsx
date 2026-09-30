@@ -15,6 +15,7 @@ interface Item {
   count: number;
   dup: number;
   notes?: number;
+  premiums?: number;
 }
 interface Preview {
   vehicles: { id: string; plate: string; model: string }[];
@@ -26,6 +27,7 @@ interface Result {
   skipped: number;
   vehiclesCreated: number;
   notesUpdated?: number;
+  premiumsUpdated?: number;
 }
 
 const defaultDecision = (i: Item) => (i.count === 0 ? "skip" : i.match ?? "new");
@@ -92,7 +94,7 @@ export function OfficeImport({
   const plateOf = useMemo(() => new Map(preview?.vehicles.map((v) => [v.id, v.plate]) ?? []), [preview]);
 
   const stats = useMemo(() => {
-    const s = { match: 0, create: 0, skip: 0, rows: 0, dup: 0, notes: 0 };
+    const s = { match: 0, create: 0, skip: 0, rows: 0, dup: 0, notes: 0, premiums: 0 };
     for (const i of preview?.items ?? []) {
       const d = decisions[i.key];
       if (d === "skip") s.skip++;
@@ -103,6 +105,7 @@ export function OfficeImport({
         if (d === i.match) {
           s.dup += i.dup;
           s.notes += i.notes ?? 0;
+          s.premiums += i.premiums ?? 0;
         }
       }
     }
@@ -163,6 +166,7 @@ export function OfficeImport({
             </div>
           </div>
           {!!result.notesUpdated && <div className="mt-3 text-sm text-sky-300">{upd} {result.notesUpdated} รายการ</div>}
+          {!!result.premiumsUpdated && <div className="mt-1 text-sm text-sky-300">อัปเดตเบี้ย {result.premiumsUpdated} รายการ</div>}
           <div className="mt-4 flex flex-wrap gap-2">
             {links.map((l) => (
               <Link key={l.href} href={l.href} className="rounded-lg px-3 py-1.5 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium">
@@ -187,6 +191,7 @@ export function OfficeImport({
                     · {upd} {stats.notes} รายการ{updateLabel ? "" : " (เก็บของเดิมไว้ในวงเล็บ)"}
                   </span>
                 )}
+                {stats.premiums > 0 && <span className="text-sky-300"> · อัปเดตเบี้ย {stats.premiums} รายการ</span>}
               </div>
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
@@ -233,6 +238,7 @@ export function OfficeImport({
                             {updateLabel ? `จะ${updateLabel}` : "หมายเหตุในไฟล์เปลี่ยน: จะอัปเดต"} {i.notes} รายการ
                           </div>
                         )}
+                        {!!i.premiums && d === i.match && <div className="text-xs text-sky-300 mt-0.5">เบี้ยในไฟล์ต่างจากที่บันทึกไว้: จะอัปเดต {i.premiums} รายการ</div>}
                       </td>
                       <td className="py-2">
                         <select
@@ -270,7 +276,7 @@ export function OfficeImport({
               disabled={busy || stats.rows === 0}
               className="rounded-lg px-4 py-2 text-sm bg-sky-500 hover:bg-sky-400 disabled:opacity-60 text-slate-900 font-medium"
             >
-              {busy ? "กำลังบันทึก..." : `ยืนยันนำเข้า ${stats.rows - stats.dup} รายการ${stats.notes ? ` · ${upd} ${stats.notes}` : ""}`}
+              {busy ? "กำลังบันทึก..." : `ยืนยันนำเข้า ${stats.rows - stats.dup} รายการ${stats.notes ? ` · ${upd} ${stats.notes}` : ""}${stats.premiums ? ` · อัปเดตเบี้ย ${stats.premiums}` : ""}`}
             </button>
             <button type="button" onClick={() => setPreview(null)} className="rounded-lg px-4 py-2 text-sm bg-slate-800/60 hover:bg-slate-700/60">
               ยกเลิก

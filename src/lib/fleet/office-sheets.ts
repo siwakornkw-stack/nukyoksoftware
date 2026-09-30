@@ -145,8 +145,15 @@ export interface InsuranceRow {
   insCompany: string;
   cmiEnd: string | null;
   taxEnd: string | null;
+  // Premiums from optional columns "เบี้ยประกัน", "เบี้ย พรบ" / "ค่า พรบ", "ค่าภาษี" / "เบี้ยภาษี".
+  insPremium: number | null;
+  cmiPremium: number | null;
+  taxPremium: number | null;
   note: string;
 }
+
+// A money column ("เบี้ย พรบ", "ค่าภาษี") must not be taken for the พ.ร.บ. or tax date column.
+const money = (header: string) => header.includes("เบี้ย") || header.startsWith("ค่า");
 
 export function parseInsuranceWorkbook(wb: WorkBook): InsuranceRow[] {
   const out: InsuranceRow[] = [];
@@ -163,8 +170,11 @@ export function parseInsuranceWorkbook(wb: WorkBook): InsuranceRow[] {
       char: findCol(h, (x) => x.includes("ลักษณะ")),
       insEnd: findCol(h, (x) => x.includes("ประกันหมด")),
       insClass: findCol(h, (x) => x.includes("ชั้น")),
-      cmi: findCol(h, (x) => x.includes("พรบ")),
-      tax: findCol(h, (x) => x.includes("ภาษี")),
+      cmi: findCol(h, (x) => x.includes("พรบ") && !money(x)),
+      tax: findCol(h, (x) => x.includes("ภาษี") && !money(x)),
+      insPremium: findCol(h, (x) => x.includes("เบี้ย") && !x.includes("พรบ") && !x.includes("ภาษี")),
+      cmiPremium: findCol(h, (x) => x.includes("พรบ") && money(x)),
+      taxPremium: findCol(h, (x) => x.includes("ภาษี") && money(x)),
       note: findCol(h, (x) => x.includes("หมายเหตุ")),
     };
     // The backhoe sheet has two "ชื่อประกัน" columns and fills either one.
@@ -181,7 +191,8 @@ export function parseInsuranceWorkbook(wb: WorkBook): InsuranceRow[] {
       const company = companyCols.map((ci) => clean(r[ci])).find(Boolean) ?? "";
       const cls = clean(at(r, c.insClass)).replace(/ชั้น\s*/, "ชั้น ");
       // Anything after the note column is a scratch note someone typed in the margin.
-      const margin = c.note < 0 ? [] : r.slice(c.note + 1).map(clean).filter(Boolean);
+      const premiumCols = [c.insPremium, c.cmiPremium, c.taxPremium];
+      const margin = c.note < 0 ? [] : r.map((v, j) => (j > c.note && !premiumCols.includes(j) ? clean(v) : "")).filter(Boolean);
       out.push({
         key: `${name}!${hi + 1 + i}`,
         sheet: name,
@@ -194,6 +205,9 @@ export function parseInsuranceWorkbook(wb: WorkBook): InsuranceRow[] {
         insCompany: company,
         cmiEnd: toDate(at(r, c.cmi)),
         taxEnd: toDate(at(r, c.tax)),
+        insPremium: toNum(at(r, c.insPremium)),
+        cmiPremium: toNum(at(r, c.cmiPremium)),
+        taxPremium: toNum(at(r, c.taxPremium)),
         note: [clean(at(r, c.note)), ...margin].filter(Boolean).join(" / "),
       });
     });

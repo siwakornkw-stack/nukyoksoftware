@@ -32,6 +32,7 @@ export interface PreviewItem {
   count: number;
   dup: number;
   notes?: number; // insurance: stored records whose note the file will update; installments: stored unpaid ones the file marks paid
+  premiums?: number; // insurance: stored records whose premium the file will set
 }
 
 export interface Preview {
@@ -45,6 +46,7 @@ export interface CommitResult {
   skipped: number;
   vehiclesCreated: number;
   notesUpdated?: number;
+  premiumsUpdated?: number;
 }
 
 type Tx = Prisma.TransactionClient;
@@ -311,12 +313,55 @@ async function applyNoteChanges(tx: Tx, changes: NoteChange[], username: string)
   }
 }
 
+const premiumOf = (r: InsuranceRow, kind: Kind) => (kind === "ins" ? r.insPremium : kind === "cmi" ? r.cmiPremium : r.taxPremium);
+
+type PremiumChange = { kind: Kind; id: string; before: number; after: number };
+
+// Stored records for this row whose premium differs from the file's. The file is
+// where the office keeps the premium, so a filled-in amount wins; an empty or
+// zero premium in the file changes nothing.
+async function premiumChanges(db: Tx, vid: string, row: InsuranceRow): Promise<PremiumChange[]> {
+  const out: PremiumChange[] = [];
+  for (const [kind, end] of insDates(row)) {
+    const after = premiumOf(row, kind);
+    if (!after) continue;
+    const where = {
+      Vehicle: { TenantId: T },
+      OR: [{ ImportKey: `${kind}|${vid}|${end}` }, { VehicleId: vid, EndDate: utc(end) }],
+    };
+    const select = { TotalPremium: true };
+    const found =
+      kind === "ins"
+        ? (await db.insurancePolicyVehicle.findMany({ where, select: { ...select, InsurancePolicyVehicleId: true } })).map((r) => ({ id: r.InsurancePolicyVehicleId, p: r.TotalPremium }))
+        : kind === "cmi"
+          ? (await db.compulsoryMotorInsuranceVehicle.findMany({ where, select: { ...select, CompulsoryMotorInsuranceVehicleId: true } })).map((r) => ({ id: r.CompulsoryMotorInsuranceVehicleId, p: r.TotalPremium }))
+          : (await db.tax.findMany({ where, select: { ...select, TaxId: true } })).map((r) => ({ id: r.TaxId, p: r.TotalPremium }));
+    for (const f of found) {
+      const before = Number(f.p);
+      if (before !== after) out.push({ kind, id: f.id, before, after });
+    }
+  }
+  return out;
+}
+
+async function applyPremiumChanges(tx: Tx, changes: PremiumChange[], username: string) {
+  for (const c of changes) {
+    const data = { TotalPremium: c.after, UpdatedByUsername: username, UpdatedAt: new Date() };
+    if (c.kind === "ins") await tx.insurancePolicyVehicle.update({ where: { InsurancePolicyVehicleId: c.id }, data });
+    else if (c.kind === "cmi") await tx.compulsoryMotorInsuranceVehicle.update({ where: { CompulsoryMotorInsuranceVehicleId: c.id }, data });
+    else await tx.tax.update({ where: { TaxId: c.id }, data });
+  }
+}
+
+const RECORD_KEY: Record<Kind, string> = { ins: "insurance", cmi: "compulsory", tax: "tax" };
+
 export async function previewInsurance(wb: WorkBook): Promise<Preview> {
   const rows = parseInsuranceWorkbook(wb);
   const { vehicles, match } = await loadMatcher();
   const matched = rows.map((r) => match(r.label));
   const seen = await insExisting();
   const notes = await Promise.all(rows.map((r, i) => (matched[i] ? noteChanges(prisma, matched[i]!, r) : [])));
+  const premiums = await Promise.all(rows.map((r, i) => (matched[i] ? premiumChanges(prisma, matched[i]!, r) : [])));
   const label: Record<Kind, string> = { ins: "ประกัน", cmi: "พ.ร.บ.", tax: "ภาษี" };
 
   return {
@@ -333,7 +378,10 @@ export async function previewInsurance(wb: WorkBook): Promise<Preview> {
           .join(" · "),
         summary: dates.length
           ? dates
-              .map(([k, d]) => `${label[k]} ${thDate(d)}${k === "ins" && insExtra ? ` (${insExtra})` : ""}`)
+              .map(([k, d]) => {
+                const p = premiumOf(r, k);
+                return `${label[k]} ${thDate(d)}${k === "ins" && insExtra ? ` (${insExtra})` : ""}${p ? ` ${baht(p)}` : ""}`;
+              })
               .join(" · ")
           : "ไม่มีวันหมดอายุในแถวนี้",
         newPlate: newPlateText(r.label),
@@ -341,6 +389,7 @@ export async function previewInsurance(wb: WorkBook): Promise<Preview> {
         count: dates.length,
         dup: vid ? dates.filter(([k, d]) => seen.has(`${k}|${vid}|${d}`)).length : 0,
         notes: notes[i].length,
+        premiums: premiums[i].length,
       };
     }),
   };
@@ -355,7 +404,7 @@ export async function commitInsurance(
   const rows = parseInsuranceWorkbook(wb);
   const { match, valid } = await loadMatcher();
 
-  return prisma.$transaction(async (tx) => {
+  const { priced, ...result } = await prisma.$transaction(async (tx) => {
     const creator = vehicleCreator(tx, username);
     const targets: { vid: string; row: InsuranceRow }[] = [];
     let skipped = 0;
@@ -376,6 +425,12 @@ export async function commitInsurance(
     // Worked out before the inserts, so only records that already existed are touched.
     const changes = (await Promise.all(targets.map((t) => noteChanges(tx, t.vid, t.row)))).flat();
     await applyNoteChanges(tx, changes, username);
+    // A record moved to another vehicle can match two rows (its import key and its
+    // new vehicle + expiry): change it once, from the first row.
+    const priced = (await Promise.all(targets.map((t) => premiumChanges(tx, t.vid, t.row))))
+      .flat()
+      .filter((c, i, all) => all.findIndex((x) => x.kind === c.kind && x.id === c.id) === i);
+    await applyPremiumChanges(tx, priced, username);
     const ins: Prisma.InsurancePolicyVehicleCreateManyInput[] = [];
     const cmi: Prisma.CompulsoryMotorInsuranceVehicleCreateManyInput[] = [];
     const tax: Prisma.TaxCreateManyInput[] = [];
@@ -399,7 +454,7 @@ export async function commitInsurance(
         seen.add(k);
         const EndDate = utc(end);
         const Year = beYear(end);
-        const rec = { ...base, Year, EndDate, ImportKey: k };
+        const rec = { ...base, Year, EndDate, ImportKey: k, TotalPremium: premiumOf(row, kind) ?? 0 };
         if (kind === "ins") {
           const StartDate = new Date(EndDate);
           StartDate.setUTCFullYear(StartDate.getUTCFullYear() - 1);
@@ -426,8 +481,11 @@ export async function commitInsurance(
         CreatedByUsername: username,
       },
     });
-    return { created, dup, skipped, vehiclesCreated: creator.count(), notesUpdated: changes.length };
+    return { created, dup, skipped, vehiclesCreated: creator.count(), notesUpdated: changes.length, premiumsUpdated: priced.length, priced };
   });
+  // Premiums are money: log each change the way the record edit API does.
+  for (const c of priced) await audit(`record:${RECORD_KEY[c.kind]}`, c.id, "update", username, { TotalPremium: c.before }, { TotalPremium: c.after, file: fileName });
+  return result;
 }
 
 // -------------------------------------------------------- installments
