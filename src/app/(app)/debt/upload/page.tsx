@@ -55,7 +55,7 @@ export default function UploadPage() {
 
   return (
     <div className="max-w-3xl">
-      <PageHeader title="อัปโหลดข้อมูล" subtitle="ไฟล์ Excel รายงานใบวางบิล (BillingNoteReport)" />
+      <PageHeader title="อัปโหลดข้อมูล" subtitle="ไฟล์ Excel รายงานใบวางบิล / ใบแจ้งหนี้ ค้างรับ" />
 
       <Card className="mb-4">
         <label
@@ -76,6 +76,11 @@ export default function UploadPage() {
         >
           <div className="text-3xl">⬆️</div>
           <div className="text-sm text-slate-300">ลากไฟล์มาวาง หรือคลิกเพื่อเลือก (.xlsx)</div>
+          <div className="text-xs text-slate-500 text-center px-4">
+            รับ 2 แบบ: รายงานใบวางบิล (BillingNoteReport) หรือรายงานใบแจ้งหนี้ค้างรับ แยกแผ่นตามปี (เช่น ลูกหนี้ 2018-2026)
+            <br />
+            แบบใบแจ้งหนี้ไม่มีวันครบกำหนด ระบบใช้วันที่เอกสาร + 30 วัน · อัปโหลดใหม่จะแทนชุดข้อมูลเดิม
+          </div>
           <input
             type="file"
             accept=".xlsx,.xls"

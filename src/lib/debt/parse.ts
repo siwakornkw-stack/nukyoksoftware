@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import type { DebtRecord, DebtStatus } from "./types";
 import { STATUS_LIST } from "./types";
+import { normalizeDate, toISO } from "@/lib/fleet/dates";
 
 function toISODate(v: unknown): string | null {
   if (v == null || v === "") return null;
@@ -46,6 +47,10 @@ export function parseWorkbook(buf: ArrayBuffer): DebtRecord[] {
     }
   }
   if (headerIdx === -1) headerIdx = 4;
+  const header = (rows[headerIdx] || []).map((c) => String(c ?? "").replace(/\s/g, ""));
+  // Read again without cellDates: its Date objects depend on the machine time zone
+  // (a day early on a UTC+7 PC); the raw Excel serial does not.
+  if (!header.some((h) => h.includes("ครบกำหนด"))) return parseInvoiceReport(XLSX.read(buf, { type: "array" }));
 
   const out: DebtRecord[] = [];
   for (let i = headerIdx + 1; i < rows.length; i++) {
@@ -70,6 +75,68 @@ export function parseWorkbook(buf: ArrayBuffer): DebtRecord[] {
       salesperson: String(r[14] ?? "").trim(),
       paid: 0,
     });
+  }
+  return out;
+}
+
+const CREDIT_DAYS = 30;
+
+function addDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+// FlowAccount "รายงานใบวางบิล/ใบแจ้งหนี้" of open invoices (e.g. "ลูกหนี้ 2018-2026
+// ณ 30.09.69", one sheet per year). It has no due date, status or salesperson
+// columns, and columns are found by header text. Every row is an open invoice
+// (status วางบิลแล้ว); the due date is the document date + 30 days so aging and
+// reminders work.
+function parseInvoiceReport(wb: XLSX.WorkBook): DebtRecord[] {
+  const out: DebtRecord[] = [];
+  for (const name of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, raw: true });
+    const hi = rows.slice(0, 30).findIndex((r) => (r || []).some((c) => String(c ?? "").trim() === "เลขที่เอกสาร"));
+    if (hi < 0) continue;
+    const h = (rows[hi] || []).map((c) => String(c ?? "").replace(/\s/g, ""));
+    const col = (pred: (x: string) => boolean) => h.findIndex(pred);
+    const c = {
+      doc: col((x) => x === "เลขที่เอกสาร"),
+      date: col((x) => x.includes("วัน/เดือน/ปี")),
+      customer: col((x) => x.includes("ชื่อลูกค้า")),
+      project: col((x) => x.includes("ชื่อโปรเจ็ค")),
+      taxId: col((x) => x.includes("เลขผู้เสียภาษี")),
+      branch: col((x) => x.includes("สาขา")),
+      value: col((x) => x === "มูลค่า"),
+      vat: col((x) => x.includes("ภาษีมูลค่าเพิ่ม")),
+      total: col((x) => x.includes("ยอดรวมสุทธิ")),
+      deposit: col((x) => x.includes("มัดจำ")),
+    };
+    const at = (r: unknown[], i: number) => (i < 0 ? "" : r[i]);
+    for (const row of rows.slice(hi + 1)) {
+      const r = row || [];
+      const docNo = String(at(r, c.doc) ?? "").trim();
+      if (!/\d/.test(docNo)) continue; // blank lines, the totals row
+      const date = toISO(normalizeDate(at(r, c.date)));
+      out.push({
+        id: docNo,
+        docNo,
+        docType: "ใบแจ้งหนี้",
+        date,
+        customer: String(at(r, c.customer) ?? "").replace(/\s+/g, " ").trim(),
+        project: String(at(r, c.project) ?? "").trim(),
+        taxId: String(at(r, c.taxId) ?? "").trim(),
+        dueDate: date ? addDays(date, CREDIT_DAYS) : null,
+        branch: String(at(r, c.branch) ?? "").trim(),
+        value: toNum(at(r, c.value)),
+        vat: toNum(at(r, c.vat)),
+        total: toNum(at(r, c.total)),
+        depositRef: String(at(r, c.deposit) ?? "").trim(),
+        status: "วางบิลแล้ว", // open; "เปิดบิลแล้ว" would count as collected in summary.ts
+        salesperson: "",
+        paid: 0,
+      });
+    }
   }
   return out;
 }
