@@ -50,7 +50,9 @@ export function parseWorkbook(buf: ArrayBuffer): DebtRecord[] {
   const header = (rows[headerIdx] || []).map((c) => String(c ?? "").replace(/\s/g, ""));
   // Read again without cellDates: its Date objects depend on the machine time zone
   // (a day early on a UTC+7 PC); the raw Excel serial does not.
-  if (!header.some((h) => h.includes("ครบกำหนด"))) return parseInvoiceReport(XLSX.read(buf, { type: "array" }));
+  // BillingNoteReport columns (any one is enough): due date, status, salesperson.
+  const billingNote = header.some((h) => h.includes("ครบกำหนด") || h === "สถานะ" || h.includes("พนักงานขาย"));
+  if (!billingNote) return parseInvoiceReport(XLSX.read(buf, { type: "array" }));
 
   const out: DebtRecord[] = [];
   for (let i = headerIdx + 1; i < rows.length; i++) {

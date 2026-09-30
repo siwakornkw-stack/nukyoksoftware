@@ -33,4 +33,10 @@ describe("debt workbook", () => {
     const [r] = parseWorkbook(buf({ s: [...TOP, header, [1, "BL1", "ใบวางบิล", "2026-09-01", "ลูกค้า", "", "", "2026-09-30", "", 100, 7, 107, "", "วางบิลแล้ว", "เอ"]] }));
     expect([r.docNo, r.dueDate, r.total, r.status, r.salesperson]).toEqual(["BL1", "2026-09-30", 107, "วางบิลแล้ว", "เอ"]);
   });
+
+  it("treats a sheet with a status column but no due-date header as a BillingNoteReport", () => {
+    const header = ["ลำดับที่", "เลขที่เอกสาร", "ประเภท", "วันที่", "ลูกค้า", "โปรเจ็ค", "เลขผู้เสียภาษี", "วันกำหนดชำระ", "สาขา", "มูลค่า", "VAT", "รวม", "มัดจำ", "สถานะ", "พนักงานขาย"];
+    const [r] = parseWorkbook(buf({ s: [...TOP, header, [1, "BL2", "ใบวางบิล", "2026-09-01", "ลูกค้า", "", "", "2026-09-30", "", 100, 7, 107, "", "ชำระแล้ว", "บี"]] }));
+    expect([r.docNo, r.dueDate, r.status, r.salesperson]).toEqual(["BL2", "2026-09-30", "ชำระแล้ว", "บี"]);
+  });
 });
