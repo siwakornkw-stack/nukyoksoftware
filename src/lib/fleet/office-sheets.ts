@@ -311,3 +311,78 @@ export function parseInstallmentWorkbook(wb: WorkBook): InstallmentRow[] {
   }
   return out;
 }
+
+export interface IncomeRow {
+  sheet: string;
+  kind: "tax" | "cash"; // tax: sales-tax report (RVV..., before-VAT amount); cash: billing notes paid in cash (BL...)
+  docNo: string;
+  date: string;
+  customer: string;
+  project: string;
+  amount: number;
+}
+
+export interface IncomeSheet {
+  sheet: string;
+  kind: "tax" | "cash";
+  rows: IncomeRow[];
+  cancelled: number; // rows whose status column says ยกเลิก
+}
+
+// รายรับ MM.69: "ในระบบ" = the FlowAccount sales-tax report, "บิลนอก" = cash billing
+// notes. Columns move between months, so they are found by header text. Sheets
+// named "...(ยกเลิก)" are read too; only rows marked ยกเลิก in a status column are dropped.
+// Sheets without "ยกเลิก" in the name come first so their amount wins for a document
+// listed in both.
+export function parseIncomeWorkbook(wb: WorkBook): IncomeSheet[] {
+  const out: IncomeSheet[] = [];
+  const bad: string[] = [];
+  const names = [...wb.SheetNames].sort((a, b) => Number(a.includes("ยกเลิก")) - Number(b.includes("ยกเลิก")));
+  for (const name of names) {
+    const rows = sheetRows(wb, name);
+    const hi = rows.findIndex((r) => r.some((c) => squash(c) === "ลำดับที่") && r.some((c) => squash(c) === "เลขที่เอกสาร"));
+    if (hi < 0) continue;
+
+    const h = rows[hi].map(squash);
+    const kind = h.some((x) => x.includes("ก่อนภาษี")) ? "tax" : "cash";
+    const c = {
+      doc: findCol(h, (x) => x === "เลขที่เอกสาร"),
+      date: findCol(h, (x) => x.includes("วัน/เดือน/ปี")),
+      customer: findCol(h, (x) => x.includes("ชื่อลูกค้า")),
+      project: findCol(h, (x) => x.includes("ชื่อโปรเจ็ค")),
+      amount: kind === "tax" ? findCol(h, (x) => x.includes("ก่อนภาษี")) : findCol(h, (x) => x === "มูลค่า" || x.includes("ยอดรวมสุทธิ")),
+      status: findCol(h, (x) => x === "สถานะ"),
+    };
+    if (c.doc < 0 || c.amount < 0) continue;
+    const at = (r: Cell[], i: number) => (i < 0 ? "" : r[i]);
+
+    const data: IncomeRow[] = [];
+    let cancelled = 0;
+    for (const [i, r] of rows.slice(hi + 1).entries()) {
+      const docNo = text(at(r, c.doc));
+      const amount = toNum(at(r, c.amount));
+      if (!/\d/.test(docNo) || amount == null) continue; // blank lines, the totals row ("ยอดรวมทั้งหมด" may sit in this column)
+      if (text(at(r, c.status)).includes("ยกเลิก")) {
+        cancelled++;
+        continue;
+      }
+      const date = toDate(at(r, c.date));
+      if (!date || !plausible(date)) {
+        bad.push(`แผ่น "${name}" แถว ${hi + i + 2}: วันที่ "${cellText(at(r, c.date))}" ไม่ถูกต้อง`);
+        continue;
+      }
+      data.push({
+        sheet: name,
+        kind,
+        docNo,
+        date,
+        customer: text(at(r, c.customer)),
+        project: text(at(r, c.project)),
+        amount,
+      });
+    }
+    if (data.length || cancelled) out.push({ sheet: name, kind, rows: data, cancelled });
+  }
+  if (bad.length) throw new SheetError(`แก้ไฟล์ก่อนนำเข้า: ${bad.join(" · ")}`);
+  return out;
+}

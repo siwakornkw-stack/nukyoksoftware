@@ -38,7 +38,15 @@ export default async function ReportsPage() {
 
   return (
     <div className="max-w-5xl">
-      <PageHeader title="รายงานการเงิน" subtitle="ปีปัจจุบัน · 12 เดือนล่าสุด" />
+      <PageHeader
+        title="รายงานการเงิน"
+        subtitle="ปีปัจจุบัน · 12 เดือนล่าสุด"
+        action={
+          <Link href="/fleet/income/import" className="rounded-lg px-3 py-1.5 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium">
+            นำเข้ารายรับ
+          </Link>
+        }
+      />
 
       <div className="grid gap-4 sm:grid-cols-3 mb-4">
         <StatCard label="รายรับ (ปีนี้)" value={baht(summary.income)} accent="emerald" />
