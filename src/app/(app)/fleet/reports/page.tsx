@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
-import { getFleetSummary, getMonthlyFinance, dec } from "@/lib/fleet/queries";
+import { getMonthlyFinance, dec } from "@/lib/fleet/queries";
+import { fleetDashboard } from "@/lib/fleet/dashboard";
 import { PageHeader, Card, StatCard } from "@/components/ui";
 import { baht } from "@/lib/format";
 import { FinanceChart } from "../Charts";
@@ -10,10 +11,11 @@ export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
   const T = DEFAULT_TENANT_ID;
-  const yearStart = new Date(new Date().getFullYear(), 0, 1);
+  const year = new Date().getUTCFullYear();
+  const yearStart = new Date(Date.UTC(year, 0, 1));
 
-  const [summary, monthly, topIncome] = await Promise.all([
-    getFleetSummary(),
+  const [dash, monthly, topIncome] = await Promise.all([
+    fleetDashboard(year),
     getMonthlyFinance(12),
     prisma.incomeVehicle.groupBy({
       by: ["VehicleId"],
@@ -34,7 +36,8 @@ export default async function ReportsPage() {
     return v ? `${v.LicensePlatePrefix} ${v.LicensePlateSuffix}` : "-";
   };
 
-  const net = summary.income - summary.expense;
+  const t = dash.totals;
+  const net = t.income - t.expense;
 
   return (
     <div className="max-w-5xl">
@@ -49,13 +52,23 @@ export default async function ReportsPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-3 mb-4">
-        <StatCard label="รายรับ (ปีนี้)" value={baht(summary.income)} accent="emerald" />
-        <StatCard label="ค่าใช้จ่าย (ปีนี้)" value={baht(summary.expense)} accent="rose" />
-        <StatCard label="คงเหลือสุทธิ" value={baht(net)} accent={net >= 0 ? "sky" : "rose"} />
+        <StatCard label="รายรับ (ปีนี้)" value={baht(t.income)} sub="ก่อน VAT" accent="emerald" />
+        <StatCard
+          label="ต้นทุนรถ (ปีนี้)"
+          value={baht(t.expense)}
+          sub={`น้ำมัน ${baht(t.fuel)} · ซ่อม ${baht(t.repair)} · ภาษี/ประกัน ${baht(t.premiums)}`}
+          accent="rose"
+        />
+        <StatCard
+          label="รายรับ - ต้นทุนรถ"
+          value={baht(net)}
+          sub="ยังไม่รวมค่างวดและค่าใช้จ่ายอื่นของบริษัท"
+          accent={net >= 0 ? "sky" : "rose"}
+        />
       </div>
 
       <div className="mb-4">
-        <FinanceChart data={monthly} />
+        <FinanceChart data={monthly} title="รายรับ vs ต้นทุนรถ รายเดือน (น้ำมัน ซ่อม ภาษี/ประกัน)" />
       </div>
 
       <Card>
