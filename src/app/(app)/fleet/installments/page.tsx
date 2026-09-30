@@ -97,7 +97,7 @@ function InstallmentsInner() {
   return (
     <div className="max-w-5xl">
       <PageHeader
-        title="ค่างวด / ลูกหนี้"
+        title="ค่างวดรถ"
         subtitle={vehicle ? "กรองเฉพาะรถที่เลือก" : `รวม ${baht(total)}`}
         action={
           <div className="flex gap-2">

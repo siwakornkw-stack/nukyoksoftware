@@ -21,7 +21,7 @@ export const groups: NavGroup[] = [
       { href: "/fleet/drivers", label: "คนขับ & งานวิ่ง", icon: "🧑‍✈️" },
       { href: "/fleet/drivers/summary", label: "สรุปงานคนขับ", icon: "🧮" },
       { href: "/fleet/maintenance", label: "บำรุงรักษา (เลขไมล์)", icon: "🔧" },
-      { href: "/fleet/installments", label: "ค่างวด / ลูกหนี้", icon: "💳" },
+      { href: "/fleet/installments", label: "ค่างวดรถ", icon: "💳" },
       { href: "/fleet/import", label: "นำเข้าข้อมูล", icon: "⬆️" },
       { href: "/fleet/reports", label: "รายงาน", icon: "📈" },
       { href: "/fleet/reports/vehicles", label: "กำไร/ต้นทุนรายคัน", icon: "⚖️" },
