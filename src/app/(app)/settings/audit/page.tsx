@@ -31,6 +31,7 @@ const ACTION_LABEL: Record<string, string> = {
   "enable-2fa": "เปิดยืนยัน 2 ขั้น",
   "disable-2fa": "ปิดยืนยัน 2 ขั้น",
   done: "ปิดงาน",
+  restore: "กู้คืน",
 };
 // Bookkeeping columns that change on every edit and say nothing to a reader.
 const NOISE = new Set(["UpdatedAt", "UpdatedByUsername", "UpdatedTime", "CreatedAt", "CreatedByUsername"]);
@@ -106,7 +107,7 @@ export default function AuditPage() {
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap">{ACTION_LABEL[l.Action] ?? l.Action}</td>
                     <td className="py-2 text-xs">
-                      {l.Action === "delete" || l.Action === "create" ? (
+                      {l.Action === "delete" || l.Action === "create" || l.Action === "restore" ? (
                         <span className="text-slate-400 break-all">{show(l.Action === "delete" ? l.Before : l.After)}</span>
                       ) : (
                         diff.map(([k, a, b]) => (

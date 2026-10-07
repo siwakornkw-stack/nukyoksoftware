@@ -76,6 +76,7 @@ export const groups: NavGroup[] = [
       { href: "/account", label: "บัญชีของฉัน", icon: "🔑" },
       { href: "/settings/users", label: "ผู้ใช้งาน", icon: "👥", adminOnly: true },
       { href: "/settings/audit", label: "ประวัติการแก้ไข", icon: "🕘", adminOnly: true },
+      { href: "/settings/trash", label: "ถังขยะ", icon: "🗑️", adminOnly: true },
     ],
   },
 ];
