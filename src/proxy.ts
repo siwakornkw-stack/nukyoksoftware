@@ -26,6 +26,12 @@ export function proxy(req: NextRequest) {
 
   const hasCookie = Boolean(req.cookies.get(COOKIE)?.value);
   if (!hasCookie) {
+    // A redirect would turn an expired-session fetch into POST /login, a 404 with
+    // no JSON, and every form would show only "บันทึกไม่สำเร็จ". Export links are
+    // navigations and still go to the login page.
+    if (pathname.startsWith("/api/") && req.headers.get("sec-fetch-mode") !== "navigate") {
+      return NextResponse.json({ error: "เซสชันหมดอายุ กรุณารีเฟรชหน้าแล้วเข้าสู่ระบบใหม่" }, { status: 401 });
+    }
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
