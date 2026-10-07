@@ -4,7 +4,8 @@
 # Keeps KEEP_DAYS days of nightly dumps. Only files named dhevakij-nightly-* are
 # rotated, so the manual pre-deploy backups in the same folder are left alone.
 # Optional off-machine copy: set OFFSITE to an rclone remote path (e.g. "dhkcrypt:");
-# nightly files older than OFFSITE_KEEP_DAYS are pruned there.
+# nightly files older than OFFSITE_KEEP_DAYS are pruned there. UPLOAD_DIR (from
+# .env) is copied to <OFFSITE>/uploads as well.
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/home/ubuntu/dhevakij}"
@@ -63,6 +64,16 @@ if [ -n "$OFFSITE" ]; then
   "$RCLONE" copy "$out" "$OFFSITE" && log "copied to $OFFSITE" || fail "local backup OK but copy to $OFFSITE failed"
   "$RCLONE" delete "$OFFSITE" --min-age "${OFFSITE_KEEP_DAYS}d" --include 'dhevakij-nightly-*.sql.gz' \
     || log "WARN: offsite prune failed"
+  # Uploaded files (fuel bill photos, vehicle documents) are not in the dump.
+  # copy, not sync: a file deleted on the server stays offsite, so a record
+  # restored from the trash still has its photo. The prune above only matches
+  # dump names, so it never touches uploads/.
+  uploads="${UPLOAD_DIR:-$(envval UPLOAD_DIR || true)}"
+  case "$OFFSITE" in *:) dest="${OFFSITE}uploads" ;; *) dest="${OFFSITE%/}/uploads" ;; esac
+  if [ -n "$uploads" ] && [ -d "$uploads" ]; then
+    "$RCLONE" copy "$uploads" "$dest" && log "copied $uploads to $dest" \
+      || fail "database backup OK but copying uploads to $dest failed"
+  fi
 fi
 
 report true "OK" "$size" "$([ -n "$OFFSITE" ] && echo true || echo false)"
