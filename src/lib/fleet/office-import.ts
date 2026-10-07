@@ -128,7 +128,9 @@ function newPlateText(label: string) {
 
 // ---------------------------------------------------------------- fuel
 
-const fuelKey = (vid: string, r: { date: string; invoice: string; amount: number }) =>
+// Also used by the bill-photo import, so a bill entered from a photo is a
+// duplicate when the month's Excel file brings the same row.
+export const fuelKey = (vid: string, r: { date: string; invoice: string; amount: number }) =>
   `${vid}|${r.date}|${r.invoice}|${r.amount.toFixed(2)}`;
 
 // Matched on the key stored at import, not the row's current values, so edits

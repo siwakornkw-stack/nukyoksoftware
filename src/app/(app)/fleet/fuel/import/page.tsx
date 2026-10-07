@@ -1,10 +1,12 @@
 import { PageHeader } from "@/components/ui";
 import { OfficeImport } from "../../OfficeImport";
+import { ImportTabs } from "./ImportTabs";
 
 export default function FuelImportPage() {
   return (
     <div className="max-w-5xl">
       <PageHeader title="นำเข้าค่าน้ำมัน" subtitle="ไฟล์ค่าน้ำมันประจำเดือนของออฟฟิศ (1 แผ่นงาน = รถ/เครื่องจักร 1 คัน)" />
+      <ImportTabs active="/fleet/fuel/import" />
       <OfficeImport
         kind="fuel"
         itemLabel="แผ่นงาน"

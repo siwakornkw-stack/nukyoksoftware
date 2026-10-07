@@ -1,8 +1,11 @@
 // Bill extraction via Google Gemini (ported from โปรแกรมนำมัน/src/extract.js).
 // Free-tier models get congested (429/503); try a chain so one busy model does not block extraction.
+// Each model has its own daily quota. 2026-10-07: 2.5-flash allows only 20 requests a
+// day and often needs over 20 s per bill; flash-lite read the test bills right in 5-9 s.
+// flash-latest did not answer within 40 s; 2.0-flash is retired (404).
 const MODELS = process.env.EXTRACT_MODEL
   ? [process.env.EXTRACT_MODEL]
-  : ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"];
+  : ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
 const REQUEST_TIMEOUT_MS = 20_000;
 
 const nullableStr = { type: "STRING", nullable: true };
@@ -29,7 +32,7 @@ const BILL_SCHEMA = {
 };
 
 const PROMPT = `อ่านรูปใบเสร็จ/บิลเติมน้ำมันนี้ (ปั๊มน้ำมันในประเทศไทย) แล้วดึงข้อมูล:
-- receipt_no: เลขที่ใบกำกับภาษี/ใบเสร็จ (มักขึ้นต้นด้วย "เลขที่")
+- receipt_no: เลขที่ใบกำกับภาษี ตามที่พิมพ์หลังคำว่า "เลขที่ใบกำกับภาษี" หรือ "เลขที่ :" คัดลอกทุกตัวอักษรตามจริง รวมตัวอักษรไทยหรืออังกฤษตัวแรก (เช่น ต26102812010782, TIO000016910000399) ไม่ใช่เลข POS หรือเลขที่ขึ้นต้นด้วย #
 - station: ชื่อแบรนด์ปั๊มและสาขาที่เติมจริง เช่น "บางจาก บายพาสภูเก็ต กม.4" (ไม่ใช่ชื่อบริษัทหรือที่อยู่สำนักงานใหญ่บนหัวบิล)
 - bill_date: วันที่ในบิล รูปแบบ YYYY-MM-DD (บิลไทยเขียนแบบ วัน/เดือน/ปี และถ้าเป็นปี พ.ศ. ให้แปลงเป็น ค.ศ. โดยลบ 543)
 - bill_time: เวลาในบิล รูปแบบ HH:MM แบบ 24 ชั่วโมง
@@ -37,7 +40,7 @@ const PROMPT = `อ่านรูปใบเสร็จ/บิลเติม
 - liters: จำนวนลิตร
 - price_per_liter: ราคาต่อลิตร (บาท)
 - total: ยอดรวมสุทธิที่จ่ายจริง รวม VAT แล้ว (บรรทัด "รวมทั้งสิ้น" ไม่ใช่ "มูลค่าก่อนภาษี")
-- plate: ทะเบียนรถ ถ้ามีระบุในบิล
+- plate: ข้อความหลังคำว่า "ทะเบียนรถ" เท่านั้น (เช่น 81-2993, sy200) ไม่ใช่เลขบัตรหรือเลขอื่น ถ้าไม่มีคำว่าทะเบียนรถ ให้ใส่ null
 - is_fuel_bill: true ถ้ารูปนี้เป็นบิลเติมน้ำมันจริง, false ถ้าเป็นรูปอื่น
 ช่องไหนอ่านไม่ออกหรือไม่มีในบิล ให้ใส่ null`;
 
