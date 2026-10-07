@@ -15,7 +15,12 @@ const sane = (d: Date | null) => {
 
 export function normalizeDate(v: unknown): Date | null {
   if (v == null || v === "") return null;
-  if (v instanceof Date) return sane(v);
+  if (v instanceof Date) {
+    // XLSX cellDates turns "5/10/2569" into a Date in year 2569.
+    if (isNaN(v.getTime())) return null;
+    const y = v.getUTCFullYear();
+    return sane(y >= 2400 ? new Date(Date.UTC(y - 543, v.getUTCMonth(), v.getUTCDate())) : v);
+  }
 
   if (typeof v === "number") {
     // Excel serial (1900 date system) -> UTC midnight of that day

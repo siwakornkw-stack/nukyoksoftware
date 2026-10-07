@@ -29,6 +29,15 @@ function toNum(v: string): number | null {
   return isNaN(n) ? null : n;
 }
 
+// A missing or unreadable date stops the import: falling back to today put due
+// dates and payments on the wrong day without anyone noticing.
+function rowDate(r: Record<string, unknown>, keys: string[], rowNo: number, label: string, bad: string[]): Date {
+  const raw = pickRaw(r, keys);
+  const d = normalizeDate(raw);
+  if (!d) bad.push(raw == null ? `แถว ${rowNo}: ไม่มี${label}` : `แถว ${rowNo}: ${label} "${String(raw).slice(0, 30)}" ไม่ถูกต้อง`);
+  return d ?? new Date(0);
+}
+
 const PLATE_KEYS = ["เลขทะเบียน", "ทะเบียน", "เลขที่ทะเบียน", "ทะเบียนรถ", "plate", "Plate"];
 const PREFIX_KEYS = ["หมวด", "หมวดทะเบียน", "prefix"];
 
@@ -56,6 +65,14 @@ function plateResolver(vehicles: { VehicleId: string; LicensePlatePrefix: string
     plate.prefix ? byFull.get(`${plate.prefix}|${plate.suffix}`) ?? bySuffix.get(plate.suffix) : bySuffix.get(plate.suffix);
 }
 
+function badDates(bad: string[]) {
+  const more = bad.length > 10 ? ` และอีก ${bad.length - 10} แถว` : "";
+  return NextResponse.json(
+    { error: `แก้วันที่ในไฟล์ก่อนนำเข้า (ยังไม่ได้บันทึกอะไร): ${bad.slice(0, 10).join(" · ")}${more}` },
+    { status: 400 }
+  );
+}
+
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -66,13 +83,16 @@ export async function POST(req: Request) {
   const mode = String(form.get("mode") || "vehicles");
 
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: "array", cellDates: true });
+  // No cellDates: its Date objects depend on the machine time zone (a day early
+  // on a UTC+7 PC). Raw Excel serials go through normalizeDate, BE years included.
+  const wb = XLSX.read(buf, { type: "array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
 
   let created = 0,
     dup = 0,
     skipped = 0;
+  const bad: string[] = [];
 
   if (mode === "installments") {
     const vehicles = await prisma.vehicle.findMany({
@@ -88,7 +108,7 @@ export async function POST(req: Request) {
     const seen = new Set(existing.map((e) => `${e.VehicleId}|${e.InstallmentNumber}`));
 
     const data: Prisma.InstallmentsVehicleCreateManyInput[] = [];
-    for (const r of rows) {
+    for (const [i, r] of rows.entries()) {
       const plate = splitPlate(r);
       if (!plate) {
         skipped++;
@@ -110,12 +130,13 @@ export async function POST(req: Request) {
         VehicleId: vid,
         Status: "active",
         InstallmentNumber: number,
-        DueDate: normalizeDate(pickRaw(r, ["ครบกำหนด", "วันครบกำหนด", "dueDate", "DueDate"])) ?? new Date(),
+        DueDate: rowDate(r, ["ครบกำหนด", "วันครบกำหนด", "dueDate", "DueDate"], i + 2, "วันครบกำหนด", bad),
         Amount: toNum(pick(r, ["ยอด", "ค่างวด", "จำนวนเงิน", "amount", "Amount"])) ?? 0,
         CreatedByUsername: session.username,
       });
       created++;
     }
+    if (bad.length) return badDates(bad);
     if (data.length) await prisma.installmentsVehicle.createMany({ data });
   } else if (mode === "income") {
     const vehicles = await prisma.vehicle.findMany({
@@ -131,7 +152,7 @@ export async function POST(req: Request) {
     const seen = new Set(existing.map((e) => `${e.VehicleId}|${e.InvoiceNumber}`));
 
     const data: Prisma.IncomeVehicleCreateManyInput[] = [];
-    for (const r of rows) {
+    for (const [i, r] of rows.entries()) {
       const plate = splitPlate(r);
       if (!plate) {
         skipped++;
@@ -154,7 +175,7 @@ export async function POST(req: Request) {
         TenantId: DEFAULT_TENANT_ID,
         Status: "active",
         Description: pick(r, ["รายละเอียด", "รายการ", "description", "Description"]),
-        DateTime: normalizeDate(pickRaw(r, ["วันที่", "วันที่รับเงิน", "date", "Date"])) ?? new Date(),
+        DateTime: rowDate(r, ["วันที่", "วันที่รับเงิน", "date", "Date"], i + 2, "วันที่", bad),
         Time: "",
         WorkOrderNumber: pick(r, ["เลขที่ใบสั่งงาน", "ใบสั่งงาน", "workOrder", "WorkOrder"]),
         InvoiceNumber: invoice,
@@ -163,6 +184,7 @@ export async function POST(req: Request) {
       });
       created++;
     }
+    if (bad.length) return badDates(bad);
     if (data.length) await prisma.incomeVehicle.createMany({ data });
   } else {
     // mode === "vehicles" (default)

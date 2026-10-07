@@ -22,6 +22,10 @@ describe("normalizeDate", () => {
     expect(n(serial(2026, 5, 5))).toBe("2026-05-05");
     expect(n(serial(2569, 5, 5))).toBe("2026-05-05");
   });
+  it("converts a Buddhist-Era year on a Date (XLSX cellDates)", () => {
+    expect(n(new Date(Date.UTC(2569, 9, 5)))).toBe("2026-10-05");
+    expect(n(new Date(Date.UTC(2026, 9, 5)))).toBe("2026-10-05");
+  });
   it("returns null for a year no record can have (typo in the date field)", () => {
     // Seen on production: these reached Prisma and failed the save with a 500.
     expect(normalizeDate("92569-02-21")).toBeNull();
