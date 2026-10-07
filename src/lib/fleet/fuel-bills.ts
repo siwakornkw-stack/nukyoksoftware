@@ -8,8 +8,10 @@ import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { baht, thDate } from "@/lib/format";
 import { normalizeDate } from "./dates";
 import { plateText } from "./plates";
-import { extractBill } from "@/lib/fuel/extract";
+import { randomUUID } from "crypto";
 import sharp from "sharp";
+import { extractBill } from "@/lib/fuel/extract";
+import { put } from "@/lib/storage";
 import { fuelKey, loadMatcher, rememberAlias } from "./office-import";
 
 const T = DEFAULT_TENANT_ID;
@@ -26,7 +28,11 @@ export interface BillRow {
   odoStart: number;
   odoEnd: number;
   receiver: string;
+  billUrl: string; // "" when none
 }
+
+// Only photos this import stored itself (storeBillPhoto) may be attached.
+const BILL_URL = /^\/uploads\/fuel-bills\/\d{4}-\d{2}\/[0-9a-f-]{36}\.jpg$/;
 
 // The same bill already stored: same import key, or same invoice number and
 // amount. The number alone is not enough: a short receipt number ("4372910")
@@ -54,10 +60,45 @@ export async function vehicleList() {
   return vehicles.map((v) => ({ id: v.VehicleId, plate: plateText(v), model: v.Model }));
 }
 
-export async function readBill(image: Buffer) {
-  // Not compressImage (1280 px, q72, sized for stored evidence): the reader got the
-  // year, the VAT-inclusive total and the invoice letters wrong at that size.
-  const buf = await sharp(image).rotate().resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+// Stored at upload, before the reader runs, so a bill can still be typed by hand
+// and saved with its photo when the reader fails (quota used up, rejected key).
+// Full size, not compressImage (1280 px, q72): the reader got the year, the
+// VAT-inclusive total and the invoice letters wrong at that size, and people
+// read the small print on the stored photo too. About 300 KB a bill.
+// Throws when the file is not an image sharp can read.
+export async function storeBillPhoto(image: Buffer) {
+  const buf = await sharp(image)
+    .rotate()
+    .resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+  const { url } = await put(`fuel-bills/${new Date().toISOString().slice(0, 7)}/${randomUUID()}.jpg`, buf);
+  return { buf, url };
+}
+
+// Mileage the next fill-up starts from: the latest fill of that vehicle on or
+// before the date. Staff write the previous fill's end mileage as the start
+// (508 of 525 such pairs in Jun-Oct 2026); when that end is 0 they repeat the
+// previous start (machines filled before anyone read the hour meter).
+export async function lastOdo(vehicleId: string, date: string) {
+  const day = normalizeDate(date);
+  const g = await prisma.gasolineCost.findFirst({
+    where: {
+      VehicleId: vehicleId,
+      Vehicle: { TenantId: T },
+      OR: [{ OdometerEnd: { gt: 0 } }, { OdometerStart: { gt: 0 } }],
+      ...(day ? { DateTime: { lte: day } } : {}),
+    },
+    orderBy: [{ DateTime: "desc" }, { CreatedAt: "desc" }],
+    select: { DateTime: true, OdometerStart: true, OdometerEnd: true },
+  });
+  if (!g) return null;
+  const end = Number(g.OdometerEnd);
+  return { odo: end > 0 ? end : Number(g.OdometerStart), date: g.DateTime.toISOString().slice(0, 10) };
+}
+
+// Throws when the reader fails; the caller turns that into a message.
+export async function readBill(buf: Buffer) {
   const b = await extractBill(buf, "image/jpeg");
   const d = b.bill_date ? normalizeDate(b.bill_date) : null;
   const date = d ? d.toISOString().slice(0, 10) : "";
@@ -79,6 +120,7 @@ export async function readBill(image: Buffer) {
     liters: b.liters ?? 0,
     amount,
     dup: await existing(vehicleId, { date, invoice, amount }),
+    lastOdo: vehicleId ? await lastOdo(vehicleId, date) : null,
   };
 }
 
@@ -107,6 +149,7 @@ export function parseRows(input: unknown): { rows: BillRow[] } | { error: string
       odoStart: numOf(o.odoStart),
       odoEnd: numOf(o.odoEnd),
       receiver: str(o.receiver, 200),
+      billUrl: BILL_URL.test(str(o.billUrl, 200)) ? str(o.billUrl, 200) : "",
     };
     if (!row.vehicleId) return { error: `${n}: ต้องเลือกรถ` };
     if (row.amount <= 0) return { error: `${n}: ต้องกรอกจำนวนเงิน` };
@@ -152,6 +195,7 @@ export async function commitBills(rows: BillRow[], username: string) {
           OdometerEnd: r.odoEnd,
           Distance: r.odoStart > 0 && r.odoEnd > r.odoStart ? Math.round((r.odoEnd - r.odoStart) * 100) / 100 : null,
           ReceiverName: r.receiver || null,
+          BillUrl: r.billUrl || null,
           ImportKey: k,
           CreatedByUsername: username,
           UpdatedByUsername: username,

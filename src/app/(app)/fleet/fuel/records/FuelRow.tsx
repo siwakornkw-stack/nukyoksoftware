@@ -72,7 +72,14 @@ export function FuelRow({
       <tr className="border-b border-slate-800/50">
         <td className={`${td} text-slate-400`}>{thDate(r.date)}</td>
         <td className={td}>{r.item}</td>
-        <td className={`${td} text-slate-300`}>{r.invoice || "-"}</td>
+        <td className={`${td} text-slate-300`}>
+          {r.invoice || "-"}
+          {r.billUrl && (
+            <a href={r.billUrl} target="_blank" rel="noreferrer" title="เปิดรูปบิล" className="ml-1.5 text-sky-400 hover:text-sky-300">
+              🧾
+            </a>
+          )}
+        </td>
         <td className={`${td} text-right`}>{r.odoStart ? num(r.odoStart, 2) : "-"}</td>
         <td className={`${td} text-right`}>{r.odoEnd ? num(r.odoEnd, 2) : "-"}</td>
         <td className={`${td} text-right`}>{r.distance ? num(r.distance, 2) : "-"}</td>

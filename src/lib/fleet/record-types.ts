@@ -160,6 +160,7 @@ export const RECORD_TYPES: RecordTypeDef[] = [
       { name: "OdometerEnd", label: "เลขไมล์สิ้นสุด", type: "decimal" },
       { name: "Distance", label: "ระยะทาง", type: "decimal", optional: true },
       { name: "ReceiverName", label: "ผู้รับน้ำมัน", type: "text", optional: true },
+      { name: "BillUrl", label: "รูปบิล", type: "file", optional: true },
     ],
   },
   {

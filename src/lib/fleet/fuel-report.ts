@@ -16,6 +16,7 @@ export interface FuelRecord {
   odoEnd: number;
   distance: number | null;
   receiver: string;
+  billUrl: string;
 }
 
 export type AnomalyKind = "sameDay" | "dupInvoice" | "noInvoice" | "price" | "odoBack" | "kmlDrop" | "noLiters";
@@ -244,6 +245,7 @@ export async function loadFuelRecords(opts: { from: string; to: string; vehicleI
       odoEnd: Number(g.OdometerEnd),
       distance: g.Distance == null ? null : Number(g.Distance),
       receiver: g.ReceiverName ?? "",
+      billUrl: g.BillUrl ?? "",
     })
   );
 }

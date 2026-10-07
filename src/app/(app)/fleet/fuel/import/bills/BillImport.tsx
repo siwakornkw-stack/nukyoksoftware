@@ -1,13 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui";
+import { thDate } from "@/lib/format";
 
 interface Vehicle {
   id: string;
   plate: string;
   model: string;
+}
+
+// Mileage a fill-up starts from, and the date of the fill it came from.
+interface Odo {
+  odo: number;
+  date: string;
 }
 
 interface Bill {
@@ -17,6 +24,10 @@ interface Bill {
   rot: number; // degrees, for photos taken sideways
   state: "reading" | "ok" | "error";
   error: string;
+  readError: string; // the reader failed: the photo is stored, fields are typed by hand
+  billUrl: string; // the stored photo, saved with the fuel row
+  dbOdo: Odo | null; // latest stored fill of this vehicle on or before the bill date
+  odoTouched: boolean; // the start mileage was typed, so it is no longer filled in
   include: boolean;
   isFuel: boolean;
   station: string;
@@ -60,22 +71,35 @@ export function BillImport() {
     fd.append("file", file);
     const res = await fetch("/api/fleet/fuel-bills", { method: "POST", body: fd }).catch(() => null);
     const d = res ? await res.json().catch(() => ({})) : {};
-    if (!res?.ok) return patch(b.key, { state: "error", error: d.error || "อ่านบิลไม่สำเร็จ", include: false });
+    if (!res?.ok) return patch(b.key, { state: "error", error: d.error || "อัปโหลดรูปไม่สำเร็จ", include: false });
     patch(b.key, {
       state: "ok",
-      isFuel: d.isFuel,
-      station: d.station,
-      time: d.time,
-      plate: d.plate,
-      dup: d.dup,
+      billUrl: d.billUrl ?? "",
+      readError: d.readError ?? "",
+      isFuel: d.isFuel ?? true,
+      station: d.station ?? "",
+      time: d.time ?? "",
+      plate: d.plate ?? "",
+      dup: d.dup ?? null,
+      dbOdo: d.lastOdo ?? null,
       vehicleId: d.vehicleId ?? "",
-      date: d.date,
-      invoice: d.invoice,
-      item: d.item,
+      date: d.date ?? "",
+      invoice: d.invoice ?? "",
+      item: d.item ?? "",
       liters: d.liters ? String(d.liters) : "",
       amount: d.amount ? String(d.amount) : "",
-      include: d.isFuel && !d.dup,
+      include: d.readError ? true : d.isFuel && !d.dup,
     });
+  }
+
+  // The vehicle or the date changed: look up where that vehicle's previous fill ended.
+  async function refreshOdo(key: number, vehicleId: string, date: string) {
+    if (!vehicleId) return patch(key, { dbOdo: null });
+    const d = await fetch(`/api/fleet/fuel-bills?odo=${encodeURIComponent(vehicleId)}&date=${encodeURIComponent(date)}`)
+      .then((r) => r.json())
+      .catch(() => ({}));
+    // Ignore an answer that arrives after the user picked yet another vehicle or date.
+    setBills((cur) => cur.map((b) => (b.key === key && b.vehicleId === vehicleId && b.date === date ? { ...b, dbOdo: d.lastOdo ?? null } : b)));
   }
 
   // One photo at a time: the reader's free tier answers 429 to bursts.
@@ -90,6 +114,10 @@ export function BillImport() {
         rot: 0,
         state: "reading",
         error: "",
+        readError: "",
+        billUrl: "",
+        dbOdo: null,
+        odoTouched: false,
         include: false,
         isFuel: true,
         station: "",
@@ -119,6 +147,28 @@ export function BillImport() {
     });
   }
 
+  // Start mileage filled in for each bill: the latest earlier fill of the same
+  // vehicle, from the database or from a bill above it in this batch (by date),
+  // so the second bill of a vehicle starts where the first one ended.
+  const autoOdo = useMemo(() => {
+    const out = new Map<number, Odo>();
+    const running = new Map<string, Odo>();
+    const order = bills
+      .map((b, i) => ({ b, i }))
+      .filter(({ b }) => b.vehicleId)
+      .sort((x, y) => x.b.date.localeCompare(y.b.date) || x.i - y.i);
+    for (const { b } of order) {
+      const prev = running.get(b.vehicleId);
+      const base = prev && (!b.dbOdo || prev.date >= b.dbOdo.date) ? prev : b.dbOdo;
+      if (base && base.odo > 0) out.set(b.key, base);
+      const start = b.odoTouched ? Number(b.odoStart) || 0 : base?.odo ?? 0;
+      const end = Number(b.odoEnd) || 0;
+      if (end > 0 || start > 0) running.set(b.vehicleId, { odo: end > 0 ? end : start, date: b.date });
+    }
+    return out;
+  }, [bills]);
+  const startOf = (b: Bill) => (b.odoTouched ? b.odoStart : String(autoOdo.get(b.key)?.odo ?? ""));
+
   const chosen = bills.filter((b) => b.include && b.state === "ok");
   const reading = bills.some((b) => b.state === "reading");
 
@@ -134,9 +184,10 @@ export function BillImport() {
       item: b.item,
       liters: Number(b.liters) || 0,
       amount: Number(b.amount) || 0,
-      odoStart: Number(b.odoStart) || 0,
+      odoStart: Number(startOf(b)) || 0,
       odoEnd: Number(b.odoEnd) || 0,
       receiver: b.receiver,
+      billUrl: b.billUrl,
     }));
     const res = await fetch("/api/fleet/fuel-bills", {
       method: "POST",
@@ -157,7 +208,10 @@ export function BillImport() {
       type={type}
       step={step}
       value={b[f]}
-      onChange={(e) => patch(b.key, { [f]: e.target.value })}
+      onChange={(e) => {
+        patch(b.key, { [f]: e.target.value });
+        if (f === "date") refreshOdo(b.key, b.vehicleId, e.target.value);
+      }}
       className="field w-full"
     />
   );
@@ -248,13 +302,21 @@ export function BillImport() {
               {b.state === "error" && <div className="text-sm text-rose-400">{b.error}</div>}
               {b.state === "ok" && (
                 <>
-                  {!b.isFuel && <div className="mb-2 text-sm text-amber-300">รูปนี้อาจไม่ใช่บิลน้ำมัน ตรวจก่อนติ๊กบันทึก</div>}
+                  {b.readError && <div className="mb-2 text-sm text-amber-300">⚠ {b.readError}</div>}
+                  {!b.readError && !b.isFuel && <div className="mb-2 text-sm text-amber-300">รูปนี้อาจไม่ใช่บิลน้ำมัน ตรวจก่อนติ๊กบันทึก</div>}
                   {b.dup && <div className="mb-2 text-sm text-amber-300">{b.dup}</div>}
                   {!b.vehicleId && <div className="mb-2 text-sm text-amber-300">จับคู่รถไม่ได้ เลือกรถก่อนบันทึก</div>}
                   <div className="grid gap-3 sm:grid-cols-2 text-sm">
                     <label>
                       <span className="block text-slate-400 mb-1">บันทึกเข้ารถ</span>
-                      <select value={b.vehicleId} onChange={(e) => patch(b.key, { vehicleId: e.target.value })} className="field w-full">
+                      <select
+                        value={b.vehicleId}
+                        onChange={(e) => {
+                          patch(b.key, { vehicleId: e.target.value });
+                          refreshOdo(b.key, e.target.value, b.date);
+                        }}
+                        className="field w-full"
+                      >
                         <option value="">- เลือกรถ -</option>
                         {vehicles.map((v) => (
                           <option key={v.id} value={v.id}>
@@ -288,7 +350,18 @@ export function BillImport() {
                       <span className="block text-slate-400 mb-1">
                         เลขไมล์เริ่ม <span className="text-slate-600">(ไม่บังคับ)</span>
                       </span>
-                      {input(b, "odoStart", "number", "0.01")}
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={startOf(b)}
+                        onChange={(e) => patch(b.key, { odoStart: e.target.value, odoTouched: true })}
+                        className="field w-full"
+                      />
+                      {!b.odoTouched && autoOdo.has(b.key) && (
+                        <span className="block mt-1 text-xs text-slate-500">
+                          ดึงจากการเติมครั้งก่อน ({thDate(autoOdo.get(b.key)!.date)})
+                        </span>
+                      )}
                     </label>
                     <label>
                       <span className="block text-slate-400 mb-1">
