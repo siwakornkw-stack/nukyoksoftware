@@ -11,7 +11,8 @@ import { audit } from "@/lib/audit";
 // /api/cron/express-po.
 
 const iso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable();
-const text = (max = 200) => z.string().max(max).catch("");
+// Over-long text is cut, not dropped (a .max() failure would blank the field).
+const text = (max = 200) => z.string().catch("").transform((s) => s.slice(0, max));
 const n = z.number().finite().catch(0);
 
 const lineSchema = z.object({
@@ -153,19 +154,31 @@ export async function upsertPurchaseOrders(list: PoData[]): Promise<{ created: n
   let created = 0, updated = 0, reset = 0;
   for (const po of list) {
     const hash = contentHash(po);
-    const old = byNo.get(po.poNo);
+    let old = byNo.get(po.poNo);
     if (!old) {
-      await prisma.purchaseOrder.create({ data: { TenantId: DEFAULT_TENANT_ID, PoNo: po.poNo, ...columns(po, hash) } });
-      created++;
-      continue;
+      try {
+        await prisma.purchaseOrder.create({ data: { TenantId: DEFAULT_TENANT_ID, PoNo: po.poNo, ...columns(po, hash) } });
+        created++;
+        continue;
+      } catch (e) {
+        // Another sync run created it meanwhile: update that row instead.
+        if ((e as Prisma.PrismaClientKnownRequestError)?.code !== "P2002") throw e;
+        old = (await prisma.purchaseOrder.findUnique({
+          where: { TenantId_PoNo: { TenantId: DEFAULT_TENANT_ID, PoNo: po.poNo } },
+          select: { PurchaseOrderId: true, PoNo: true, ContentHash: true, ApprovalStatus: true, ApprovalNote: true, ApprovedBy: true, ApprovedAt: true },
+        }))!;
+      }
     }
-    const clear = old.ApprovalStatus && old.ContentHash !== hash;
+    // Cleared whenever the signed content changed, whatever `old` said: an
+    // approval may have landed after the read above (it matched the old hash),
+    // and must not survive onto figures nobody approved.
+    const changed = old.ContentHash !== hash;
     await prisma.purchaseOrder.update({
       where: { PurchaseOrderId: old.PurchaseOrderId },
-      data: { ...columns(po, hash), ...(clear ? { ApprovalStatus: null, ApprovalNote: null, ApprovedBy: null, ApprovedAt: null } : {}) },
+      data: { ...columns(po, hash), ...(changed ? { ApprovalStatus: null, ApprovalNote: null, ApprovedBy: null, ApprovedAt: null } : {}) },
     });
     updated++;
-    if (clear) {
+    if (changed && old.ApprovalStatus) {
       reset++;
       const before = { PoNo: old.PoNo, ApprovalStatus: old.ApprovalStatus, ApprovalNote: old.ApprovalNote, ApprovedBy: old.ApprovedBy, ApprovedAt: old.ApprovedAt };
       await audit("PurchaseOrder", old.PurchaseOrderId, "express-changed", "express-sync", before, { PoNo: old.PoNo, ApprovalStatus: null });
@@ -174,21 +187,50 @@ export async function upsertPurchaseOrders(list: PoData[]): Promise<{ created: n
   return { created, updated, reset };
 }
 
+const companySchema = z.object({ name: text(), address: text(500), phone: text(), taxId: text() });
+
+// Every sync request carries the Express company (ISINFO). Once one company is
+// stored, data from another one is refused: EXPRESS_DIR pointing at another
+// company or year folder would otherwise mix its POs into ours.
+export async function checkCompany(company: unknown): Promise<string | null> {
+  const c = companySchema.safeParse(company);
+  if (!c.success || !c.data.name) return "ไม่มีข้อมูลบริษัทจาก Express (อัปเดต scripts/express-po-sync.mjs บนเครื่องที่มี Express)";
+  const stored = await getExpressCompany();
+  if (stored && (stored.taxId !== c.data.taxId || stored.name !== c.data.name)) {
+    return `ข้อมูลมาจากบริษัท "${c.data.name}" (${c.data.taxId}) ไม่ใช่ "${stored.name}" (${stored.taxId}): ตรวจ EXPRESS_DIR บนเครื่องที่มี Express`;
+  }
+  return null;
+}
+
 // Final call of a sync run: flag POs no longer in Express, store the letterhead
-// and the sync time.
-export async function finishSync(allPoNos: string[], company: unknown): Promise<SyncInfo> {
+// and the sync time. Refuses when most POs would vanish at once: that is a
+// wrong folder or a half-read file, not deletions in Express.
+export async function finishSync(allPoNos: string[], company: unknown): Promise<SyncInfo | { error: string }> {
   const keep = new Set(allPoNos);
   const ours = await prisma.purchaseOrder.findMany({ where: { TenantId: DEFAULT_TENANT_ID }, select: { PoNo: true, MissingInExpress: true } });
   const gone = ours.filter((p) => !keep.has(p.PoNo)).map((p) => p.PoNo);
+  const present = ours.filter((p) => !p.MissingInExpress).length;
+  const newlyGone = ours.filter((p) => !keep.has(p.PoNo) && !p.MissingInExpress).length;
+  if (present >= 20 && newlyGone > present / 2) {
+    return { error: `Express มี PO ${allPoNos.length} ใบ แต่ในระบบมี ${present} ใบ: ไม่ติดป้าย "ถูกลบ" ให้ ตรวจ EXPRESS_DIR` };
+  }
   const back = ours.filter((p) => keep.has(p.PoNo) && p.MissingInExpress).map((p) => p.PoNo);
   if (gone.length) await prisma.purchaseOrder.updateMany({ where: { TenantId: DEFAULT_TENANT_ID, PoNo: { in: gone } }, data: { MissingInExpress: true } });
   if (back.length) await prisma.purchaseOrder.updateMany({ where: { TenantId: DEFAULT_TENANT_ID, PoNo: { in: back } }, data: { MissingInExpress: false } });
 
   const info: SyncInfo = { at: new Date().toISOString(), count: allPoNos.length, missing: gone.length };
   await setSetting(SYNC_KEY, JSON.stringify(info));
-  const c = z.object({ name: text(), address: text(500), phone: text(), taxId: text() }).safeParse(company);
+  const c = companySchema.safeParse(company);
   if (c.success && c.data.name) await setSetting(COMPANY_KEY, JSON.stringify(c.data));
   return info;
+}
+
+// No successful sync for this long = the office PC (Task Scheduler, every 10
+// minutes) is off, logged out or failing.
+export const SYNC_MAX_AGE_MS = 60 * 60 * 1000;
+export async function syncStale(): Promise<{ stale: boolean; at: string | null }> {
+  const s = await getSyncInfo();
+  return { stale: !s || Date.now() - new Date(s.at).getTime() > SYNC_MAX_AGE_MS, at: s?.at ?? null };
 }
 
 async function setSetting(key: string, value: string) {

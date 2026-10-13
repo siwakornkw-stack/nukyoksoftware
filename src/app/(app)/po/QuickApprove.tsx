@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 
 // One-click approve on a pending row of /po (admin). Rejecting needs a reason,
 // so that stays on the PO page.
-export function QuickApprove({ poNo, hash }: { poNo: string; hash: string }) {
+export function QuickApprove({ poNo, hash, summary }: { poNo: string; hash: string; summary: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
   async function approve() {
+    if (!confirm(`อนุมัติใบสั่งซื้อ ${poNo}?\n${summary}`)) return;
     setBusy(true);
     setErr("");
     const r = await fetch("/api/po/approval", {

@@ -153,7 +153,7 @@ export default async function PurchaseOrdersPage({ searchParams }: { searchParam
                   <td className="py-2 pr-3">
                     {(() => {
                       const k = effectiveApproval(r);
-                      if (k === "pending" && admin) return <QuickApprove poNo={r.PoNo} hash={r.ContentHash} />;
+                      if (k === "pending" && admin) return <QuickApprove poNo={r.PoNo} hash={r.ContentHash} summary={`${r.SupplierName} · ${baht(dec(r.NetAmt))}`} />;
                       return (
                         <>
                           <ApprovalBadge k={k} />

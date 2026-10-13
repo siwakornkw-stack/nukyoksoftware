@@ -84,6 +84,12 @@ describe("purchase orders", () => {
     expect(po.lines[0].unit).toBe("ตู้");
   });
 
+  it("cuts over-long text instead of blanking it", () => {
+    const [po] = buildPurchaseOrders(tables);
+    const parsed = poSchema.parse({ ...po, yourRef: "x".repeat(250) });
+    expect(parsed.yourRef).toBe("x".repeat(200));
+  });
+
   it("keeps an approval when goods arrive but not when prices change", () => {
     const [po] = buildPurchaseOrders(tables);
     const before = contentHash(poSchema.parse(po));

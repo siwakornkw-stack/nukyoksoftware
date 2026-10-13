@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { bearerOk } from "@/lib/cron-auth";
 import { opsAlert, saveBackupStatus } from "@/lib/ops-alert";
 
 export const dynamic = "force-dynamic";
@@ -9,8 +10,7 @@ export const dynamic = "force-dynamic";
 //   {"kind":"cron","path":"/api/cron/reminders","status":500}
 //     from worker/cron.mjs when a scheduled call fails.
 export async function POST(req: Request) {
-  const secret = process.env.CRON_SECRET || "";
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!bearerOk(req, process.env.CRON_SECRET)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const b = (await req.json().catch(() => null)) ?? {};

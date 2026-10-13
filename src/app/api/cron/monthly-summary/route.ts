@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { bearerOk } from "@/lib/cron-auth";
 import { prisma } from "@/lib/db";
 import { getLineAdminId } from "@/lib/fuel/settings";
 import { alertAdmin } from "@/lib/fuel/line";
@@ -18,8 +19,7 @@ const TH_MONTH = ["มกราคม", "กุมภาพันธ์", "ม�
 // 1st of the month (worker): the previous month for the LINE admins. ?month=YYYY-MM
 // picks another month (manual re-run).
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET || "";
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!bearerOk(req, process.env.CRON_SECRET)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const q = new URL(req.url).searchParams.get("month") ?? "";

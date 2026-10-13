@@ -47,6 +47,9 @@ cron.schedule("0 1 * * *", () => hit("/api/cron/reminders"), { timezone: TZ });
 // Daily 08:00 Bangkok: morning summary (backup status + what needs attention).
 cron.schedule("0 8 * * *", () => hit("/api/cron/daily-summary"), { timezone: TZ });
 
+// Hourly 09:00-18:00 Bangkok: alert if the office PC stopped syncing Express POs.
+cron.schedule("5 9-18 * * *", () => hit("/api/cron/express-po"), { timezone: TZ });
+
 // Monthly, 1st at 01:00 Bangkok: fuel monthly report to LINE admins.
 cron.schedule("0 1 1 * *", () => hit("/api/cron/fuel-monthly"), { timezone: TZ });
 

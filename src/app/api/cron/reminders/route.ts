@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import * as line from "@line/bot-sdk";
+import { bearerOk } from "@/lib/cron-auth";
 import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { dec } from "@/lib/fleet/queries";
@@ -21,9 +22,7 @@ interface Reminder {
 }
 
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET || "";
-  const auth = req.headers.get("authorization") || "";
-  if (!secret || auth !== `Bearer ${secret}`) {
+  if (!bearerOk(req, process.env.CRON_SECRET)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

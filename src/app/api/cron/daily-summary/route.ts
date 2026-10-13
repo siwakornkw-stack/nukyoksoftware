@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { bearerOk } from "@/lib/cron-auth";
+import { syncStale } from "@/lib/po/purchase-orders";
 import { getToday } from "@/lib/today";
 import { getLineAdminId } from "@/lib/fuel/settings";
 import { alertAdmin } from "@/lib/fuel/line";
@@ -13,11 +15,15 @@ const bkkTime = (iso: string) =>
 // Morning summary to the LINE admins (worker, 08:00 Bangkok). A missing or old
 // backup also raises an ops alert, so it shows in the web inbox too.
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET || "";
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!bearerOk(req, process.env.CRON_SECRET)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const t = await getToday();
+  const [t, po] = await Promise.all([getToday(), syncStale()]);
+  // 08:00: the office PC may still be off overnight, so a stale sync is only
+  // reported here; the hourly check from 09:00 raises the alert.
+  const poLine = !po.at
+    ? "⚠️ ยังไม่เคยดึง PO จาก Express"
+    : `${po.stale ? "⚠️" : "✅"} ดึง PO จาก Express ล่าสุด ${bkkTime(po.at)}`;
 
   const backupLine = !t.backup
     ? "⚠️ ยังไม่มีรายงาน backup"
@@ -28,6 +34,7 @@ export async function GET(req: Request) {
   const text = [
     "สรุปประจำวัน เทวาวณิชกิจ",
     backupLine,
+    poLine,
     `ภาษี/พ.ร.บ./ประกัน: หมดอายุ ${t.renewals.expired} · ใกล้หมด 30 วัน ${t.renewals.due30}`,
     `ค่างวดเกินกำหนด: ${t.installments.overdue} งวด (${baht(t.installments.overdueAmount)} บาท)`,
     `หนี้ลูกค้าเกินกำหนด: ${t.debt.overdue} รายการ (${baht(t.debt.overdueAmount)} บาท)`,

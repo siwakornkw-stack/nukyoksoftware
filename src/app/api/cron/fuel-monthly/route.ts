@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { bearerOk } from "@/lib/cron-auth";
 import { put } from "@/lib/storage";
 import { billsInMonth } from "@/lib/fuel/db";
 import { textReport, buildCsv } from "@/lib/fuel/report";
@@ -24,9 +25,7 @@ function prevBkkMonth(): string {
 }
 
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET || "";
-  const auth = req.headers.get("authorization") || "";
-  if (!secret || auth !== `Bearer ${secret}`) {
+  if (!bearerOk(req, process.env.CRON_SECRET)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
