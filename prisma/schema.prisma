@@ -865,6 +865,40 @@ model AssetLoan {
 }
 
 // ======================================================================
+// == PURCHASE ORDERS (copied from Express, approved here) ===============
+// ======================================================================
+
+// Read-only copy of an Express PO (POPR + POPRIT), pushed by
+// scripts/express-po-sync.mjs from the office PC. The Express columns are
+// overwritten on every sync; the Approval* columns are ours and Express never
+// sees them. ContentHash covers what an approver signs off on (supplier, lines,
+// prices, totals) but not receiving progress, so goods arriving keeps the
+// approval while a changed price or quantity sends the PO back to pending.
+model PurchaseOrder {
+  PurchaseOrderId String @id @default(uuid()) @db.VarChar(36)
+  TenantId String @db.VarChar(36)
+  PoNo String @db.VarChar(20)
+  PoDate DateTime? @db.Date
+  SupplierCode String
+  SupplierName String
+  DepCode String
+  DepName String
+  NetAmt Decimal @db.Decimal(16,2) @default(0)
+  DocStat String @db.VarChar(1) // Express: N open (awaiting goods), M complete, C cancelled
+  Data Json // the whole PO as sent by the sync (header, supplier, lines)
+  ContentHash String @db.VarChar(40)
+  MissingInExpress Boolean @default(false) // deleted in Express since the last sync
+  SyncedAt DateTime @default(now())
+  ApprovalStatus String? @db.VarChar(10) // null pending | approved | rejected
+  ApprovalNote String?
+  ApprovedBy String?
+  ApprovedAt DateTime?
+  @@unique([TenantId, PoNo])
+  @@index([TenantId, PoDate])
+  @@index([TenantId, ApprovalStatus])
+}
+
+// ======================================================================
 // == AUDIT LOG (before/after of money-related changes) =================
 // ======================================================================
 

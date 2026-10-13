@@ -57,6 +57,11 @@ export const groups: NavGroup[] = [
     ],
   },
   {
+    title: "จัดซื้อ",
+    icon: "🛒",
+    items: [{ href: "/po", label: "ใบสั่งซื้อ (PO)", icon: "🛒" }],
+  },
+  {
     title: "สินทรัพย์",
     icon: "📦",
     items: [{ href: "/assets", label: "ยืม-คืนสินทรัพย์", icon: "📦" }],
