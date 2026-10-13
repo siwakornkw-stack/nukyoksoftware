@@ -576,6 +576,12 @@ model GasolineCost {
   ReceiverName String?
   // Photo of the bill (/uploads/...), kept from the bill-photo import or the add form.
   BillUrl String?
+  // Checked one by one at /fleet/fuel/audit: "ok" | "problem" (with a note), null = not
+  // checked. Any later edit clears it, since the check was of the old values.
+  AuditStatus String? @db.VarChar(10)
+  AuditNote String?
+  AuditedBy String?
+  AuditedAt DateTime?
   // Identity of the spreadsheet row this came from, fixed at import time so a
   // row edited on the web is still recognised when the same file is re-imported.
   ImportKey String? @db.VarChar(200)

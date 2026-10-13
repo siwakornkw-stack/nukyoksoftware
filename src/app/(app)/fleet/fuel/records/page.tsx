@@ -72,6 +72,12 @@ export default async function FuelRecordsPage({ searchParams }: { searchParams: 
               ส่งออก Excel
             </a>
             <Link
+              href={`/fleet/fuel/audit?${new URLSearchParams({ from, to, ...(sp.vehicle ? { vehicle: sp.vehicle } : {}), ...(sp.receiver ? { receiver: sp.receiver } : {}) })}`}
+              className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60"
+            >
+              ตรวจทานทีละรายการ
+            </Link>
+            <Link
               href={`/fleet/fuel?${new URLSearchParams({ from, to, ...(sp.vehicle ? { vehicle: sp.vehicle } : {}) })}`}
               className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60"
             >

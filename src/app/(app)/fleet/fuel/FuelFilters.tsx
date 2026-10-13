@@ -13,6 +13,7 @@ export function FuelFilters({
   earliestMonth,
   vehicles,
   receivers,
+  extra = {},
 }: {
   action: string;
   from: string;
@@ -24,8 +25,9 @@ export function FuelFilters({
   earliestMonth: string;
   vehicles: { id: string; plate: string; model: string }[];
   receivers: string[];
+  extra?: Record<string, string>; // page-specific params kept by the form and the presets
 }) {
-  const keep = new URLSearchParams();
+  const keep = new URLSearchParams(extra);
   if (vehicle) keep.set("vehicle", vehicle);
   if (receiver) keep.set("receiver", receiver);
   const preset = (label: string, f: string, t: string) => {
@@ -49,6 +51,9 @@ export function FuelFilters({
   return (
     <Card className="mb-4">
       <form action={action} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6 items-end">
+        {Object.entries(extra).map(([k, v]) => (
+          <input key={k} type="hidden" name={k} value={v} />
+        ))}
         <label className="text-sm">
           <span className="block text-slate-400 mb-1">ตั้งแต่เดือน</span>
           <input type="month" name="from" defaultValue={from} className="field" />

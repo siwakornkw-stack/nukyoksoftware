@@ -35,6 +35,7 @@ export const groups: NavGroup[] = [
     items: [
       { href: "/fleet/fuel", label: "รายงานน้ำมัน", icon: "📈" },
       { href: "/fleet/fuel/records", label: "รายละเอียดน้ำมัน", icon: "🛢️" },
+      { href: "/fleet/fuel/audit", label: "ตรวจทานค่าน้ำมัน", icon: "✅" },
       { href: "/fleet/fuel/import", label: "นำเข้าค่าน้ำมัน", icon: "⬆️" },
     ],
   },

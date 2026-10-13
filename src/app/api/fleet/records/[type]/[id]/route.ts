@@ -83,6 +83,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ type: string;
     data[f.name] = parsed.value;
   }
 
+  // A fuel row checked at /fleet/fuel/audit was checked with its old values.
+  if ("AuditStatus" in row) Object.assign(data, { AuditStatus: null, AuditNote: null, AuditedBy: null, AuditedAt: null });
+
   const updated = await delegate(def).update({ where: { [def.idField]: id }, data });
   await audit(`record:${def.key}`, id, "update", session.username, row, updated);
   return NextResponse.json({ ok: true });
