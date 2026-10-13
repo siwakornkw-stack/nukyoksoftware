@@ -5,8 +5,10 @@ import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { PageHeader, Card } from "@/components/ui";
 import { baht, thDate } from "@/lib/format";
 import { dec } from "@/lib/fleet/queries";
-import { bkkDateTime, getSyncInfo } from "@/lib/po/purchase-orders";
+import { getSession, isAdmin } from "@/lib/auth";
+import { approvalWhere, bkkDateTime, effectiveApproval, getSyncInfo } from "@/lib/po/purchase-orders";
 import { ApprovalBadge, DocStatBadge } from "./badges";
+import { QuickApprove } from "./QuickApprove";
 
 export const dynamic = "force-dynamic";
 
@@ -27,13 +29,6 @@ const EX_OPTS = [
 const PAGE = 50;
 const isoDate = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "");
 
-const approvalWhere = (k: string): Prisma.PurchaseOrderWhereInput =>
-  k === "pending"
-    ? { ApprovalStatus: null, DocStat: { not: "C" }, MissingInExpress: false } // nothing to approve on a cancelled/deleted PO
-    : k === "approved" || k === "rejected"
-      ? { ApprovalStatus: k }
-      : {};
-
 export default async function PurchaseOrdersPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const q = sp.q?.trim() ?? "";
@@ -48,20 +43,25 @@ export default async function PurchaseOrdersPage({ searchParams }: { searchParam
     ...(ex ? { DocStat: ex } : {}),
     ...(from || to ? { PoDate: { ...(from ? { gte: new Date(`${from}T00:00:00Z`) } : {}), ...(to ? { lte: new Date(`${to}T00:00:00Z`) } : {}) } } : {}),
   };
-  const where = { ...base, ...approvalWhere(ap) };
+  // AND, not a spread: both sides may filter DocStat (the tab and the Express
+  // status filter), and a spread let the tab's condition replace the filter.
+  const tabWhere = (k: string): Prisma.PurchaseOrderWhereInput => ({ AND: [base, approvalWhere(k)] });
+  const where = tabWhere(ap);
 
-  const [rows, total, counts, sync] = await Promise.all([
+  const [rows, total, counts, sync, s] = await Promise.all([
     prisma.purchaseOrder.findMany({
       where,
       orderBy: [{ PoDate: "desc" }, { PoNo: "desc" }],
       skip: (page - 1) * PAGE,
       take: PAGE,
-      select: { PoNo: true, PoDate: true, SupplierName: true, DepName: true, NetAmt: true, DocStat: true, MissingInExpress: true, ApprovalStatus: true, ApprovedBy: true },
+      select: { PoNo: true, PoDate: true, SupplierName: true, DepName: true, NetAmt: true, DocStat: true, MissingInExpress: true, ApprovalStatus: true, ApprovedBy: true, ContentHash: true },
     }),
     prisma.purchaseOrder.count({ where }),
-    Promise.all(AP_TABS.map((t) => prisma.purchaseOrder.count({ where: { ...base, ...approvalWhere(t.key) } }))),
+    Promise.all(AP_TABS.map((t) => prisma.purchaseOrder.count({ where: tabWhere(t.key) }))),
     getSyncInfo(),
+    getSession(),
   ]);
+  const admin = !!s && isAdmin(s);
   const pages = Math.max(1, Math.ceil(total / PAGE));
 
   const keep: Record<string, string> = {};
@@ -151,8 +151,16 @@ export default async function PurchaseOrdersPage({ searchParams }: { searchParam
                   <td className="py-2 pr-3 text-right whitespace-nowrap">{baht(dec(r.NetAmt))}</td>
                   <td className="py-2 pr-3"><DocStatBadge stat={r.DocStat} missing={r.MissingInExpress} /></td>
                   <td className="py-2 pr-3">
-                    <ApprovalBadge status={r.ApprovalStatus} />
-                    {r.ApprovedBy && <div className="text-xs text-slate-500">{r.ApprovedBy}</div>}
+                    {(() => {
+                      const k = effectiveApproval(r);
+                      if (k === "pending" && admin) return <QuickApprove poNo={r.PoNo} hash={r.ContentHash} />;
+                      return (
+                        <>
+                          <ApprovalBadge k={k} />
+                          {r.ApprovedBy && <div className="text-xs text-slate-500">{r.ApprovedBy}</div>}
+                        </>
+                      );
+                    })()}
                   </td>
                   <td className="py-2 text-right whitespace-nowrap">
                     <Link href={`/print/po/${encodeURIComponent(r.PoNo)}`} className="text-xs text-slate-400 hover:text-white">🖨 พรีวิว</Link>

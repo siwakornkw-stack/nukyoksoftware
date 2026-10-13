@@ -75,9 +75,26 @@ export type PoLine = PoData["lines"][number];
 
 export const DOC_STAT_LABEL: Record<string, string> = { N: "ค้างรับ", M: "รับครบแล้ว", C: "ยกเลิก" };
 export const VAT_TYPE_LABEL: Record<string, string> = { "0": "ไม่มี VAT", "1": "รวม VAT", "2": "แยก VAT" };
-export const APPROVAL_LABEL = { pending: "รออนุมัติ", approved: "อนุมัติแล้ว", rejected: "ไม่อนุมัติ" } as const;
+export const APPROVAL_LABEL = { pending: "รออนุมัติ", approved: "อนุมัติแล้ว", auto: "อนุมัติแล้ว (รับครบ)", rejected: "ไม่อนุมัติ", none: "-" } as const;
 export type ApprovalKey = keyof typeof APPROVAL_LABEL;
-export const approvalKey = (s: string | null | undefined): ApprovalKey => (s === "approved" || s === "rejected" ? s : "pending");
+
+// The approval a PO effectively has. A PO Express shows as fully received (M)
+// counts as approved even without a decision here (the office's rule: goods
+// received means it was approved). Cancelled/deleted POs need no decision.
+export function effectiveApproval(p: { ApprovalStatus: string | null; DocStat: string; MissingInExpress?: boolean }): ApprovalKey {
+  if (p.ApprovalStatus === "approved" || p.ApprovalStatus === "rejected") return p.ApprovalStatus;
+  if (p.DocStat === "M") return "auto";
+  if (p.DocStat === "C" || p.MissingInExpress) return "none";
+  return "pending";
+}
+
+// effectiveApproval as a Prisma filter (tabs on /po). "approved" includes "auto".
+export function approvalWhere(k: string): Prisma.PurchaseOrderWhereInput {
+  if (k === "pending") return { ApprovalStatus: null, DocStat: { notIn: ["M", "C"] }, MissingInExpress: false };
+  if (k === "approved") return { OR: [{ ApprovalStatus: "approved" }, { ApprovalStatus: null, DocStat: "M" }] };
+  if (k === "rejected") return { ApprovalStatus: "rejected" };
+  return {};
+}
 
 // What an approver signs off on. Receiving progress (remaining qty, status,
 // complete date) is left out so goods arriving does not undo an approval.

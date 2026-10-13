@@ -3,7 +3,7 @@ import { getSession } from "@/lib/auth";
 import { getCompany } from "@/lib/company";
 import { bahtText } from "@/lib/baht-text";
 import { thDate } from "@/lib/format";
-import { bkkDateTime, getExpressCompany, getPurchaseOrder } from "@/lib/po/purchase-orders";
+import { bkkDateTime, effectiveApproval, getExpressCompany, getPurchaseOrder } from "@/lib/po/purchase-orders";
 import { PoPrintBar } from "./PoPrintBar";
 
 export const dynamic = "force-dynamic";
@@ -26,13 +26,13 @@ export default async function PoPrintPage({ params }: { params: Promise<{ poNo: 
   const sup = po.supplier;
   const blanks = Math.max(0, MIN_ROWS - po.lines.length);
 
-  const approved = row.ApprovalStatus === "approved";
-  const banner =
-    row.DocStat === "C" ? "ยกเลิก" : row.ApprovalStatus === "rejected" ? "ไม่อนุมัติ" : !approved ? "รออนุมัติ" : "";
+  const k = effectiveApproval(row);
+  const approved = k === "approved";
+  const banner = row.DocStat === "C" ? "ยกเลิก" : k === "rejected" ? "ไม่อนุมัติ" : k === "pending" ? "รออนุมัติ" : "";
 
   return (
     <div className="min-h-screen bg-slate-200 py-6 text-slate-900 print:bg-white print:py-0">
-      <PoPrintBar note={banner ? `สถานะ: ${banner}` : `อนุมัติแล้วโดย ${row.ApprovedBy}`} />
+      <PoPrintBar note={banner ? `สถานะ: ${banner}` : approved ? `อนุมัติแล้วโดย ${row.ApprovedBy}` : "อนุมัติแล้ว (รับของครบใน Express)"} />
       <div className="relative mx-auto w-[210mm] max-w-full bg-white p-[12mm] shadow-lg print:w-auto print:p-0 print:shadow-none">
         {banner && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

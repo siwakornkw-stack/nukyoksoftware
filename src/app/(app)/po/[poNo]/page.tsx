@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { PageHeader, Card } from "@/components/ui";
 import { getSession, isAdmin } from "@/lib/auth";
 import { num, thDate } from "@/lib/format";
-import { bkkDateTime, getPurchaseOrder, VAT_TYPE_LABEL } from "@/lib/po/purchase-orders";
+import { bkkDateTime, effectiveApproval, getPurchaseOrder, VAT_TYPE_LABEL } from "@/lib/po/purchase-orders";
 import { ApprovalBadge, DocStatBadge } from "../badges";
 import { ApprovalPanel } from "./ApprovalPanel";
 
@@ -47,7 +47,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
 
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
         <span className="text-slate-400">สถานะ Express:</span> <DocStatBadge stat={row.DocStat} missing={row.MissingInExpress} />
-        <span className="ml-3 text-slate-400">อนุมัติ:</span> <ApprovalBadge status={row.ApprovalStatus} />
+        <span className="ml-3 text-slate-400">อนุมัติ:</span> <ApprovalBadge k={effectiveApproval(row)} />
       </div>
 
       <div className="mb-4 grid gap-4 md:grid-cols-2">
@@ -124,6 +124,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
         hash={row.ContentHash}
         canApprove={!!s && isAdmin(s)}
         cancelled={row.DocStat === "C" || row.MissingInExpress}
+        received={row.DocStat === "M"}
         initial={{
           approvalStatus: row.ApprovalStatus,
           approvalNote: row.ApprovalNote ?? "",

@@ -14,12 +14,14 @@ export function ApprovalPanel({
   hash,
   canApprove,
   cancelled,
+  received,
   initial,
 }: {
   poNo: string;
   hash: string;
   canApprove: boolean;
   cancelled: boolean;
+  received: boolean; // Express shows the goods fully received: counts as approved
   initial: Approval;
 }) {
   const router = useRouter();
@@ -57,6 +59,10 @@ export function ApprovalPanel({
           </div>
           {a.approvalNote && <div className="mt-1 text-slate-300">หมายเหตุ: {a.approvalNote}</div>}
         </div>
+      ) : received ? (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+          ✅ อนุมัติแล้ว (อัตโนมัติ): Express แสดงว่ารับของครบแล้ว
+        </div>
       ) : (
         <div className="text-sm text-slate-400">ยังไม่ได้อนุมัติ</div>
       )}
@@ -69,7 +75,7 @@ export function ApprovalPanel({
         </button>
       ) : cancelled ? (
         <div className="mt-3 text-xs text-slate-500">ใบสั่งซื้อนี้ถูกยกเลิก/ลบใน Express แล้ว ไม่ต้องอนุมัติ</div>
-      ) : (
+      ) : received ? null : (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} className="field min-w-64 flex-1" placeholder="หมายเหตุ (ต้องใส่เมื่อไม่อนุมัติ)" />
           <button type="button" disabled={busy} onClick={() => decide("approved")} className="rounded-lg px-4 py-2 text-sm font-medium bg-emerald-500 hover:bg-emerald-400 text-slate-900 disabled:opacity-50">

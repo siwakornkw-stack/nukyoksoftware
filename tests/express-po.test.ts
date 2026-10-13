@@ -3,7 +3,18 @@ import { describe, expect, it } from "vitest";
 import { parseDbf } from "../scripts/express/dbf.mjs";
 // plain .mjs shared with the office-PC sync script
 import { buildPurchaseOrders } from "../scripts/express/po.mjs";
-import { contentHash, poSchema } from "@/lib/po/purchase-orders";
+import { contentHash, effectiveApproval, poSchema } from "@/lib/po/purchase-orders";
+
+describe("effective approval", () => {
+  it("treats a fully received PO as approved unless someone decided otherwise", () => {
+    expect(effectiveApproval({ ApprovalStatus: null, DocStat: "N" })).toBe("pending");
+    expect(effectiveApproval({ ApprovalStatus: null, DocStat: "M" })).toBe("auto");
+    expect(effectiveApproval({ ApprovalStatus: "rejected", DocStat: "M" })).toBe("rejected");
+    expect(effectiveApproval({ ApprovalStatus: "approved", DocStat: "N" })).toBe("approved");
+    expect(effectiveApproval({ ApprovalStatus: null, DocStat: "C" })).toBe("none");
+    expect(effectiveApproval({ ApprovalStatus: null, DocStat: "N", MissingInExpress: true })).toBe("none");
+  });
+});
 
 // Builds a tiny Visual FoxPro table: fields [name, type, len], rows of raw values.
 function dbf(fields: [string, string, number][], rows: (string | number)[][], deleted: number[] = []) {
