@@ -13,6 +13,7 @@ export interface AuditItem extends FuelRecord {
   auditNote: string;
   auditedBy: string;
   auditedAt: string;
+  updatedAt: string; // sent with a check, so a row edited since the page loaded is refused
 }
 
 type Vehicle = { id: string; plate: string };
@@ -32,6 +33,8 @@ const toForm = (r: AuditItem) => ({
 type Form = ReturnType<typeof toForm>;
 
 const CLEARED = { auditStatus: null, auditNote: "", auditedBy: "", auditedAt: "" } as const;
+// The vehicle history add form takes any file as the bill (a PDF, say), not only photos.
+const isImage = (url: string) => /\.(jpe?g|png|webp|gif)$/i.test(url);
 
 export function AuditRunner({ items, vehicles }: { items: AuditItem[]; vehicles: Vehicle[] }) {
   const [list, setList] = useState(items);
@@ -122,19 +125,23 @@ function AuditCard({
     });
 
   // Saving an edit clears the check on the server, so the item shows as not checked.
-  async function save(): Promise<boolean> {
+  // Returns the row's new UpdatedAt, or null when the save failed.
+  async function save(): Promise<string | null> {
     const res = await fetch(`/api/fleet/records/gasoline/${r.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
     }).catch(() => null);
+    const d = res ? await res.json().catch(() => ({})) : {};
     if (!res?.ok) {
-      setError((await res?.json().catch(() => ({})))?.error || "บันทึกการแก้ไขไม่สำเร็จ");
-      return false;
+      setError(d.error || "บันทึกการแก้ไขไม่สำเร็จ");
+      return null;
     }
+    const updatedAt: string = d.updatedAt ?? r.updatedAt;
     const plate = vehicles.find((v) => v.id === form.VehicleId)?.plate ?? r.plate;
     onChange({
       ...CLEARED,
+      updatedAt,
       date: form.DateTime,
       vehicleId: form.VehicleId,
       plate,
@@ -147,7 +154,7 @@ function AuditCard({
       distance: form.Distance === "" ? null : Number(form.Distance) || 0,
       receiver: form.ReceiverName,
     });
-    return true;
+    return updatedAt;
   }
 
   async function mark(status: "ok" | "problem" | "") {
@@ -158,11 +165,15 @@ function AuditCard({
     }
     setBusy(true);
     setError("");
-    if (dirty && !(await save())) return setBusy(false);
+    // The check is of the values on screen: the server refuses it when the row
+    // changed since then (UpdatedAt differs). After our own edit, send the new one.
+    let seen: string | null = r.updatedAt;
+    if (dirty) seen = await save();
+    if (!seen) return setBusy(false);
     const res = await fetch("/api/fleet/fuel-audit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: r.id, status, note: status === "problem" ? note : "" }),
+      body: JSON.stringify({ id: r.id, status, note: status === "problem" ? note : "", updatedAt: seen }),
     }).catch(() => null);
     setBusy(false);
     const d = res ? await res.json().catch(() => ({})) : {};
@@ -182,7 +193,11 @@ function AuditCard({
     <Card>
       <div className="grid gap-4 lg:grid-cols-2">
         <div>
-          {r.billUrl ? (
+          {r.billUrl && !isImage(r.billUrl) ? (
+            <a href={r.billUrl} target="_blank" rel="noreferrer" className="aspect-square rounded-lg bg-slate-900 grid place-items-center text-sm text-sky-300 hover:underline">
+              📄 เปิดไฟล์บิล
+            </a>
+          ) : r.billUrl ? (
             <>
               {/* Square box: the photo turned 90 degrees still fits inside it. */}
               <a href={r.billUrl} target="_blank" rel="noreferrer" title="เปิดรูปเต็ม" className="block aspect-square overflow-hidden rounded-lg bg-slate-900">

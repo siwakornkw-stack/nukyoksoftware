@@ -88,5 +88,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ type: string;
 
   const updated = await delegate(def).update({ where: { [def.idField]: id }, data });
   await audit(`record:${def.key}`, id, "update", session.username, row, updated);
-  return NextResponse.json({ ok: true });
+  // The fuel audit page sends this back with its check (see /api/fleet/fuel-audit).
+  return NextResponse.json({ ok: true, updatedAt: updated.UpdatedAt });
 }

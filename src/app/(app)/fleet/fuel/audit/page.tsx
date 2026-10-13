@@ -36,7 +36,7 @@ export default async function FuelAuditPage({ searchParams }: { searchParams: Pr
   ]);
   const checks = await prisma.gasolineCost.findMany({
     where: { GasolineCostId: { in: records.map((r) => r.id) } },
-    select: { GasolineCostId: true, AuditStatus: true, AuditNote: true, AuditedBy: true, AuditedAt: true, CreatedByUsername: true },
+    select: { GasolineCostId: true, AuditStatus: true, AuditNote: true, AuditedBy: true, AuditedAt: true, CreatedByUsername: true, UpdatedAt: true },
   });
   const checkOf = new Map(checks.map((c) => [c.GasolineCostId, c]));
 
@@ -56,6 +56,7 @@ export default async function FuelAuditPage({ searchParams }: { searchParams: Pr
         auditNote: c?.AuditNote ?? "",
         auditedBy: c?.AuditedBy ?? "",
         auditedAt: c?.AuditedAt?.toISOString() ?? "",
+        updatedAt: c?.UpdatedAt.toISOString() ?? "",
       };
     })
     .sort((a, b) => a.date.localeCompare(b.date) || a.plate.localeCompare(b.plate, "th"));
@@ -112,7 +113,9 @@ export default async function FuelAuditPage({ searchParams }: { searchParams: Pr
       </div>
 
       {shown.length ? (
-        <AuditRunner items={shown} vehicles={vehicles} />
+        // Keyed by the filter: a tab or preset is a client navigation, and without a
+        // new key the runner would keep its first list (it copies items into state).
+        <AuditRunner key={JSON.stringify([from, to, sp.vehicle, sp.receiver, st, photoOnly])} items={shown} vehicles={vehicles} />
       ) : (
         <Card>
           <div className="py-10 text-center text-slate-400">ไม่มีรายการในกลุ่มนี้</div>
