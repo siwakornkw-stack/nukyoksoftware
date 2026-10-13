@@ -89,7 +89,8 @@ export function AuditRunner({ items, vehicles }: { items: AuditItem[]; vehicles:
         item={item}
         vehicles={vehicles}
         onChange={update}
-        onChecked={() => (idx < list.length - 1 ? go(idx + 1) : undefined)}
+        // Only when the user is still on this item: they may have moved on while it saved.
+        onChecked={() => setIdx((cur) => (cur === idx ? Math.min(list.length - 1, idx + 1) : cur))}
       />
     </div>
   );
@@ -139,7 +140,7 @@ function AuditCard({
     }
     const updatedAt: string = d.updatedAt ?? r.updatedAt;
     const plate = vehicles.find((v) => v.id === form.VehicleId)?.plate ?? r.plate;
-    onChange({
+    const saved: Partial<AuditItem> = {
       ...CLEARED,
       updatedAt,
       date: form.DateTime,
@@ -153,7 +154,10 @@ function AuditCard({
       odoEnd: Number(form.OdometerEnd) || 0,
       distance: form.Distance === "" ? null : Number(form.Distance) || 0,
       receiver: form.ReceiverName,
-    });
+    };
+    onChange(saved);
+    // Show what was stored ("190.790" is kept as 190.79), or the form stays "edited".
+    setForm(toForm({ ...r, ...saved }));
     return updatedAt;
   }
 

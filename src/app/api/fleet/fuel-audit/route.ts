@@ -35,15 +35,20 @@ export async function POST(req: Request) {
   if (status && row.UpdatedAt.toISOString() !== seen) {
     return NextResponse.json({ error: "รายการนี้ถูกแก้ไขหลังจากเปิดหน้านี้ กดรีเฟรชหน้าแล้วตรวจค่าใหม่อีกครั้ง" }, { status: 409 });
   }
-  const { UpdatedAt: _updatedAt, ...before } = row;
+  const { UpdatedAt, ...before } = row;
 
-  const after = await prisma.gasolineCost.update({
-    where: { GasolineCostId: id },
+  // Conditional on UpdatedAt, so an edit landing between the check above and this
+  // write is not overwritten by a check of the old values.
+  const { count } = await prisma.gasolineCost.updateMany({
+    where: { GasolineCostId: id, ...(status ? { UpdatedAt } : {}) },
     data: status
       ? { AuditStatus: status, AuditNote: note || null, AuditedBy: s.username, AuditedAt: new Date() }
       : { AuditStatus: null, AuditNote: null, AuditedBy: null, AuditedAt: null },
-    select,
   });
+  if (!count) {
+    return NextResponse.json({ error: "รายการนี้ถูกแก้ไขหลังจากเปิดหน้านี้ กดรีเฟรชหน้าแล้วตรวจค่าใหม่อีกครั้ง" }, { status: 409 });
+  }
+  const after = (await prisma.gasolineCost.findUnique({ where: { GasolineCostId: id }, select }))!;
   await audit("record:gasoline", id, "audit", s.username, before, after);
   return NextResponse.json({
     auditStatus: after.AuditStatus,
