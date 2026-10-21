@@ -37,7 +37,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
         subtitle={`ข้อมูลจาก Express (ดูอย่างเดียว) · ดึงล่าสุด ${bkkDateTime(row.SyncedAt)}`}
         action={
           <div className="flex gap-2">
-            <Link href="/po" className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">กลับรายการ</Link>
+            <Link href={po.poNo.startsWith("PK") ? "/po/pk" : "/po"} className="rounded-lg px-3 py-1.5 text-sm bg-slate-800/60 hover:bg-slate-700/60">กลับรายการ</Link>
             <Link href={`/print/po/${encodeURIComponent(po.poNo)}`} className="rounded-lg px-3 py-1.5 text-sm bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium">
               🖨 พรีวิว / พิมพ์
             </Link>
