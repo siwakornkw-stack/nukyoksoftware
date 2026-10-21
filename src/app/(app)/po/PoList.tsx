@@ -6,8 +6,8 @@ import { PageHeader, Card } from "@/components/ui";
 import { baht, thDate } from "@/lib/format";
 import { dec } from "@/lib/fleet/queries";
 import { getSession, isAdmin } from "@/lib/auth";
-import { approvalWhere, bkkDateTime, effectiveApproval, getSyncInfo } from "@/lib/po/purchase-orders";
-import { ApprovalBadge, DocStatBadge } from "./badges";
+import { approvalWhere, bkkDateTime, effectiveApproval, getSyncInfo, r3State, r3WaitingWhere } from "@/lib/po/purchase-orders";
+import { ApprovalBadge, DocStatBadge, R3Badge } from "./badges";
 import { QuickApprove } from "./QuickApprove";
 
 export type SP = { q?: string; ap?: string; ex?: string; from?: string; to?: string; page?: string };
@@ -17,7 +17,9 @@ const AP_TABS = [
   { key: "approved", label: "อนุมัติแล้ว" },
   { key: "rejected", label: "ไม่อนุมัติ" },
   { key: "all", label: "ทั้งหมด" },
-] as const;
+];
+// PK: approved but no R3 (ตั้งหนี้บัตรเครดิต) opened in Express yet.
+const PK_TABS = [AP_TABS[0], AP_TABS[1], { key: "r3wait", label: "รอเปิด R3" }, AP_TABS[2], AP_TABS[3]];
 const EX_OPTS = [
   { key: "", label: "ทุกสถานะ Express" },
   { key: "N", label: "ค้างรับ" },
@@ -39,7 +41,8 @@ export type PoBook = keyof typeof PO_BOOKS;
 export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
   const { title, path, where: bookWhere } = PO_BOOKS[book];
   const q = sp.q?.trim() ?? "";
-  const ap = AP_TABS.some((t) => t.key === sp.ap) ? sp.ap! : "pending";
+  const tabs = book === "pk" ? PK_TABS : AP_TABS;
+  const ap = tabs.some((t) => t.key === sp.ap) ? sp.ap! : "pending";
   const ex = EX_OPTS.some((o) => o.key === sp.ex) ? sp.ex! : "";
   const from = isoDate(sp.from), to = isoDate(sp.to);
   const page = Math.max(1, Number(sp.page) || 1);
@@ -53,7 +56,7 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
   };
   // AND, not a spread: both sides may filter DocStat (the tab and the Express
   // status filter), and a spread let the tab's condition replace the filter.
-  const tabWhere = (k: string): Prisma.PurchaseOrderWhereInput => ({ AND: [base, approvalWhere(k)] });
+  const tabWhere = (k: string): Prisma.PurchaseOrderWhereInput => ({ AND: [base, k === "r3wait" ? r3WaitingWhere : approvalWhere(k)] });
   const where = tabWhere(ap);
 
   const [rows, total, counts, sync, s] = await Promise.all([
@@ -62,10 +65,10 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
       orderBy: [{ PoDate: "desc" }, { PoNo: "desc" }],
       skip: (page - 1) * PAGE,
       take: PAGE,
-      select: { PoNo: true, PoDate: true, SupplierName: true, DepName: true, NetAmt: true, DocStat: true, MissingInExpress: true, ApprovalStatus: true, ApprovedBy: true, ContentHash: true },
+      select: { PoNo: true, PoDate: true, SupplierName: true, DepName: true, NetAmt: true, DocStat: true, MissingInExpress: true, ApprovalStatus: true, ApprovedBy: true, ContentHash: true, R3DocNo: true },
     }),
     prisma.purchaseOrder.count({ where }),
-    Promise.all(AP_TABS.map((t) => prisma.purchaseOrder.count({ where: tabWhere(t.key) }))),
+    Promise.all(tabs.map((t) => prisma.purchaseOrder.count({ where: tabWhere(t.key) }))),
     getSyncInfo(),
     getSession(),
   ]);
@@ -121,7 +124,7 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
       </Card>
 
       <div className="mb-4 flex flex-wrap gap-2">
-        {AP_TABS.map((t, i) => (
+        {tabs.map((t, i) => (
           <Link
             key={t.key}
             href={link({ ap: t.key })}
@@ -166,6 +169,11 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
                         <>
                           <ApprovalBadge k={k} />
                           {r.ApprovedBy && <div className="text-xs text-slate-500">{r.ApprovedBy}</div>}
+                          {book === "pk" && (
+                            <div className="mt-1">
+                              <R3Badge r3={r3State(r)} />
+                            </div>
+                          )}
                         </>
                       );
                     })()}
@@ -178,7 +186,7 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
               {!rows.length && (
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-slate-500">
-                    {book === "pk" && !counts[3] && !(q || ex || from || to)
+                    {book === "pk" && !counts[tabs.findIndex((t) => t.key === "all")] && !(q || ex || from || to)
                       ? "ยังไม่มีใบสั่งซื้อ PK ใน Express (สร้างที่ Express: ซื้อ → ใบสั่งซื้อ → ใบสั่งซื้อ-น้ำมัน(ใหม่) แล้วระบบจะดึงมาภายใน 10 นาที)"
                       : "ไม่มีใบสั่งซื้อในกลุ่มนี้"}
                   </td>

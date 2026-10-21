@@ -1,4 +1,4 @@
-import { APPROVAL_LABEL, DOC_STAT_LABEL, type ApprovalKey } from "@/lib/po/purchase-orders";
+import { APPROVAL_LABEL, DOC_STAT_LABEL, type ApprovalKey, type R3State } from "@/lib/po/purchase-orders";
 
 const DOC_STYLE: Record<string, string> = {
   N: "bg-amber-500/15 text-amber-300 border-amber-500/30",
@@ -19,6 +19,16 @@ const pill = "inline-block whitespace-nowrap rounded-md border px-2 py-0.5 text-
 export function DocStatBadge({ stat, missing }: { stat: string; missing?: boolean }) {
   if (missing) return <span className={`${pill} bg-rose-500/15 text-rose-300 border-rose-500/30`}>ถูกลบใน Express</span>;
   return <span className={`${pill} ${DOC_STYLE[stat] ?? DOC_STYLE.C}`}>{DOC_STAT_LABEL[stat] ?? stat}</span>;
+}
+
+// PK only: has the R3 (ตั้งหนี้บัตรเครดิต) been opened in Express yet?
+export function R3Badge({ r3 }: { r3: R3State }) {
+  if (!r3) return null;
+  return r3.state === "opened" ? (
+    <span className={`${pill} bg-emerald-500/15 text-emerald-300 border-emerald-500/30`}>R3: {r3.docNo}</span>
+  ) : (
+    <span className={`${pill} bg-amber-500/15 text-amber-300 border-amber-500/30`}>รอเปิด R3</span>
+  );
 }
 
 // Effective approval (see effectiveApproval): our decision, or "auto" when

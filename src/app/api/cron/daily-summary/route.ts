@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { bearerOk } from "@/lib/cron-auth";
-import { syncStale } from "@/lib/po/purchase-orders";
+import { r3WaitingWhere, syncStale } from "@/lib/po/purchase-orders";
+import { prisma } from "@/lib/db";
+import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { getToday } from "@/lib/today";
 import { getLineAdminId } from "@/lib/fuel/settings";
 import { alertAdmin } from "@/lib/fuel/line";
@@ -18,7 +20,11 @@ export async function GET(req: Request) {
   if (!bearerOk(req, process.env.CRON_SECRET)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const [t, po] = await Promise.all([getToday(), syncStale()]);
+  const [t, po, r3Wait] = await Promise.all([
+    getToday(),
+    syncStale(),
+    prisma.purchaseOrder.count({ where: { TenantId: DEFAULT_TENANT_ID, MissingInExpress: false, ...r3WaitingWhere } }),
+  ]);
   // 08:00: the office PC may still be off overnight, so a stale sync is only
   // reported here; the hourly check from 09:00 raises the alert.
   const poLine = !po.at
@@ -35,6 +41,7 @@ export async function GET(req: Request) {
     "สรุปประจำวัน เทวาวณิชกิจ",
     backupLine,
     poLine,
+    ...(r3Wait ? [`⏳ ใบสั่งซื้อน้ำมัน PK อนุมัติแล้วแต่ยังไม่เปิด R3: ${r3Wait} ใบ`] : []),
     `ภาษี/พ.ร.บ./ประกัน: หมดอายุ ${t.renewals.expired} · ใกล้หมด 30 วัน ${t.renewals.due30}`,
     `ค่างวดเกินกำหนด: ${t.installments.overdue} งวด (${baht(t.installments.overdueAmount)} บาท)`,
     `หนี้ลูกค้าเกินกำหนด: ${t.debt.overdue} รายการ (${baht(t.debt.overdueAmount)} บาท)`,

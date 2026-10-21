@@ -1,6 +1,8 @@
 // Express purchase orders (ใบสั่งซื้อ) -> plain objects for /api/cron/express-po.
 // Tables: POPR (header), POPRIT (lines), APMAS (suppliers), ISTAB (code
-// tables: 20 = units, 50 = departments), ISINFO (company letterhead).
+// tables: 20 = units, 50 = departments), ISINFO (company letterhead), APTRN
+// (purchase documents: those with PONUM set were opened "อ้างถึงใบสั่งซื้อ"
+// this PO, e.g. RR ซื้อเชื่อ, R3 ตั้งหนี้บัตรเครดิต).
 import { createHash } from "crypto";
 import path from "path";
 import { readDbf } from "./dbf.mjs";
@@ -9,7 +11,13 @@ const round = (n, d = 2) => Math.round((Number(n) || 0) * 10 ** d) / 10 ** d;
 
 // Build every PO from already-parsed table rows (kept separate from file IO so
 // tests can feed rows directly).
-export function buildPurchaseOrders({ popr, poprit, apmas, istab }) {
+export function buildPurchaseOrders({ popr, poprit, apmas, istab, aptrn = /** @type {any[]} */ ([]) }) {
+  const receiptsOf = new Map();
+  for (const t of aptrn) {
+    if (!t.PONUM) continue;
+    if (!receiptsOf.has(t.PONUM)) receiptsOf.set(t.PONUM, []);
+    receiptsOf.get(t.PONUM).push({ docNo: t.DOCNUM, date: t.DOCDAT, netAmt: round(t.NETAMT), docStat: t.DOCSTAT });
+  }
   const units = new Map(), deps = new Map();
   for (const t of istab) {
     if (t.TABTYP === "20") units.set(t.TYPCOD, t.SHORTNAM || t.TYPDES);
@@ -77,6 +85,7 @@ export function buildPurchaseOrders({ popr, poprit, apmas, istab }) {
       expressApprovedBy: h.AUTHID,
       expressApproved: h.APPROVE,
       lines,
+      receipts: (receiptsOf.get(h.PONUM) || []).sort((a, b) => a.docNo.localeCompare(b.docNo)),
     };
   });
 }
@@ -107,6 +116,7 @@ export function readExpress(dir) {
       poprit: table(dir, "POPRIT"),
       apmas: table(dir, "APMAS"),
       istab: table(dir, "ISTAB"),
+      aptrn: table(dir, "APTRN"),
     }),
     company: companyFromIsinfo(table(dir, "ISINFO")),
   };

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseDbf } from "../scripts/express/dbf.mjs";
 // plain .mjs shared with the office-PC sync script
 import { buildPurchaseOrders } from "../scripts/express/po.mjs";
-import { contentHash, effectiveApproval, poSchema } from "@/lib/po/purchase-orders";
+import { contentHash, effectiveApproval, firstR3, poSchema, r3State } from "@/lib/po/purchase-orders";
 
 describe("effective approval", () => {
   it("treats a fully received PO as approved unless someone decided otherwise", () => {
@@ -82,6 +82,26 @@ describe("purchase orders", () => {
     expect(po.depName).toBe("ทรัพย์สิน");
     expect(po.lines.map((l: { code: string }) => l.code)).toEqual(["A", "B"]);
     expect(po.lines[0].unit).toBe("ตู้");
+  });
+
+  it("links Express purchase documents that reference the PO, and finds its R3", () => {
+    const aptrn = [
+      { PONUM: "PO1", DOCNUM: "R3691013-02", DOCDAT: "2026-10-13", NETAMT: 100, DOCSTAT: "C" },
+      { PONUM: "PO1", DOCNUM: "R3691013-01", DOCDAT: "2026-10-13", NETAMT: 25520, DOCSTAT: "N" },
+      { PONUM: "", DOCNUM: "R3691012-01", DOCDAT: "2026-10-12", NETAMT: 1, DOCSTAT: "N" },
+    ];
+    const [po] = buildPurchaseOrders({ ...tables, aptrn });
+    const parsed = poSchema.parse(po);
+    expect(parsed.receipts.map((r) => r.docNo)).toEqual(["R3691013-01", "R3691013-02"]);
+    expect(firstR3(parsed)).toBe("R3691013-01"); // the cancelled one never counts
+    expect(firstR3(poSchema.parse({ ...po, receipts: undefined }))).toBeNull(); // data synced before receipts existed
+  });
+
+  it("asks for an R3 only on approved PK orders", () => {
+    expect(r3State({ PoNo: "PK0000001", ApprovalStatus: "approved", R3DocNo: null })).toEqual({ state: "waiting" });
+    expect(r3State({ PoNo: "PK0000001", ApprovalStatus: null, R3DocNo: null })).toBeNull();
+    expect(r3State({ PoNo: "PK0000001", ApprovalStatus: "approved", R3DocNo: "R3691013-01" })).toEqual({ state: "opened", docNo: "R3691013-01" });
+    expect(r3State({ PoNo: "PO0000001", ApprovalStatus: "approved", R3DocNo: null })).toBeNull();
   });
 
   it("cuts over-long text instead of blanking it", () => {

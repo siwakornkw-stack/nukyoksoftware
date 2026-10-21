@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { PageHeader, Card } from "@/components/ui";
 import { getSession, isAdmin } from "@/lib/auth";
 import { num, thDate } from "@/lib/format";
-import { bkkDateTime, effectiveApproval, getPurchaseOrder, VAT_TYPE_LABEL } from "@/lib/po/purchase-orders";
-import { ApprovalBadge, DocStatBadge } from "../badges";
+import { bkkDateTime, effectiveApproval, getPurchaseOrder, r3State, VAT_TYPE_LABEL } from "@/lib/po/purchase-orders";
+import { ApprovalBadge, DocStatBadge, R3Badge } from "../badges";
+import { CopyButton } from "../CopyButton";
 import { ApprovalPanel } from "./ApprovalPanel";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   if (!found) notFound();
   const { row, po } = found;
   const sup = po.supplier;
+  const r3 = r3State(row);
 
   const info: [string, React.ReactNode][] = [
     ["วันที่", thDate(po.poDate)],
@@ -47,7 +49,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
 
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
         <span className="text-slate-400">สถานะ Express:</span> <DocStatBadge stat={row.DocStat} missing={row.MissingInExpress} />
-        <span className="ml-3 text-slate-400">อนุมัติ:</span> <ApprovalBadge k={effectiveApproval(row)} />
+        <span className="ml-3 text-slate-400">อนุมัติ:</span> <ApprovalBadge k={effectiveApproval(row)} /> <R3Badge r3={r3} />
       </div>
 
       <div className="mb-4 grid gap-4 md:grid-cols-2">
@@ -132,6 +134,55 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
           approvedAt: row.ApprovedAt?.toISOString() ?? "",
         }}
       />
+
+      {r3 && (
+        <Card className="mt-4">
+          <div className="mb-2 font-semibold">ตั้งหนี้ R3 (บัตรเครดิต)</div>
+          {r3.state === "opened" ? (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+              ✅ เปิด R3 ใน Express แล้ว: <span className="font-semibold">{r3.docNo}</span>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+              <div className="font-medium text-amber-300">⏳ อนุมัติแล้ว รอเปิด R3 ใน Express</div>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-300">
+                <li>ใน Express ไปที่ ซื้อ → ซื้อเงินเชื่อ → R3-ตั้งหนี้ (บัตรเครดิต) แล้วกดเพิ่มเอกสารใหม่</li>
+                <li>
+                  ช่อง <b>อ้างถึงใบสั่งซื้อ</b> ใส่ <span className="font-semibold text-white">{po.poNo}</span> <CopyButton value={po.poNo} label="คัดลอกเลข PK" />
+                  {" "}Express จะดึงรายการจากใบนี้มาให้
+                </li>
+                <li>ตรวจรายการ แล้วบันทึก ระบบนี้จะเห็น R3 ภายใน 10 นาทีและเปลี่ยนเป็น &quot;เปิด R3 แล้ว&quot;</li>
+              </ol>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {po.receipts.length > 0 && (
+        <Card className="mt-4">
+          <div className="mb-2 font-semibold">เอกสารใน Express ที่อ้างถึงใบนี้</div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-400 border-b border-slate-800">
+                <th className="py-2 pr-3">เลขที่</th>
+                <th className="py-2 pr-3">วันที่</th>
+                <th className="py-2 pr-3 text-right">ยอดสุทธิ</th>
+                <th className="py-2">สถานะ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {po.receipts.map((d) => (
+                <tr key={d.docNo} className="border-b border-slate-800/50">
+                  <td className="py-2 pr-3">{d.docNo}</td>
+                  <td className="py-2 pr-3">{thDate(d.date)}</td>
+                  <td className="py-2 pr-3 text-right">{money(d.netAmt)}</td>
+                  <td className="py-2 text-slate-400">{d.docStat === "C" ? "ยกเลิก" : "ปกติ"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
     </div>
   );
 }

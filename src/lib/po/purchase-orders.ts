@@ -69,6 +69,11 @@ export const poSchema = z.object({
   expressApprovedBy: text(),
   expressApproved: iso.catch(null),
   lines: z.array(lineSchema).max(500),
+  // Express purchase documents opened "อ้างถึงใบสั่งซื้อ" this PO (APTRN.PONUM).
+  receipts: z
+    .array(z.object({ docNo: text(20), date: iso.catch(null), netAmt: n, docStat: text(1) }))
+    .max(200)
+    .catch([]),
 });
 
 export type PoData = z.infer<typeof poSchema>;
@@ -88,6 +93,21 @@ export function effectiveApproval(p: { ApprovalStatus: string | null; DocStat: s
   if (p.DocStat === "C" || p.MissingInExpress) return "none";
   return "pending";
 }
+
+// PK (ใบสั่งซื้อ-น้ำมัน(ใหม่)): once approved, the office opens an R3
+// (ตั้งหนี้บัตรเครดิต) in Express with "อ้างถึงใบสั่งซื้อ" = the PK number, so
+// Express copies the PK lines itself. We never write to Express; the sync reads
+// the R3 back (APTRN.PONUM) into R3DocNo.
+export const isPk = (poNo: string) => poNo.startsWith("PK");
+export const firstR3 = (po: Pick<PoData, "receipts">): string | null =>
+  po.receipts.find((r) => r.docNo.startsWith("R3") && r.docStat !== "C")?.docNo ?? null;
+export type R3State = { state: "opened"; docNo: string } | { state: "waiting" } | null;
+export function r3State(p: { PoNo: string; ApprovalStatus: string | null; R3DocNo: string | null }): R3State {
+  if (!isPk(p.PoNo)) return null;
+  if (p.R3DocNo) return { state: "opened", docNo: p.R3DocNo };
+  return p.ApprovalStatus === "approved" ? { state: "waiting" } : null;
+}
+export const r3WaitingWhere: Prisma.PurchaseOrderWhereInput = { PoNo: { startsWith: "PK" }, ApprovalStatus: "approved", R3DocNo: null };
 
 // effectiveApproval as a Prisma filter (tabs on /po). "approved" includes "auto".
 export function approvalWhere(k: string): Prisma.PurchaseOrderWhereInput {
@@ -138,6 +158,7 @@ function columns(po: PoData, hash: string) {
     DocStat: po.docStat.slice(0, 1),
     Data: po as unknown as Prisma.InputJsonValue,
     ContentHash: hash,
+    R3DocNo: firstR3(po),
     MissingInExpress: false,
     SyncedAt: new Date(),
   };
