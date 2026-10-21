@@ -269,8 +269,8 @@ export async function finishSync(allPoNos: string[], company: unknown): Promise<
   return info;
 }
 
-// No successful sync for this long = the office PC (Task Scheduler, every 10
-// minutes) is off, logged out or failing.
+// No successful sync for this long = the office PC (Task Scheduler, every
+// minute) is off, logged out or failing.
 export const SYNC_MAX_AGE_MS = 60 * 60 * 1000;
 export async function syncStale(): Promise<{ stale: boolean; at: string | null }> {
   const s = await getSyncInfo();

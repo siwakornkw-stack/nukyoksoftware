@@ -187,7 +187,7 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-slate-500">
                     {book === "pk" && !counts[tabs.findIndex((t) => t.key === "all")] && !(q || ex || from || to)
-                      ? "ยังไม่มีใบสั่งซื้อ PK ใน Express (สร้างที่ Express: ซื้อ → ใบสั่งซื้อ → ใบสั่งซื้อ-น้ำมัน(ใหม่) แล้วระบบจะดึงมาภายใน 10 นาที)"
+                      ? "ยังไม่มีใบสั่งซื้อ PK ใน Express (สร้างที่ Express: ซื้อ → ใบสั่งซื้อ → ใบสั่งซื้อ-น้ำมัน(ใหม่) แล้วระบบจะดึงมาภายใน 1-2 นาที)"
                       : "ไม่มีใบสั่งซื้อในกลุ่มนี้"}
                   </td>
                 </tr>

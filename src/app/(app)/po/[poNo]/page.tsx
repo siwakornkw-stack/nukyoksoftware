@@ -145,7 +145,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             </div>
           ) : r3.state === "queued" ? (
             <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 text-sm text-sky-300">
-              ⏳ อนุมัติแล้ว ระบบจะสร้าง R3 (ตั้งหนี้ 0009) ใน Express ให้เองภายในประมาณ 10 นาที จากยอด H3 ของใบนี้
+              ⏳ อนุมัติแล้ว ระบบจะสร้าง R3 (ตั้งหนี้ 0009) ใน Express ให้เองภายในประมาณ 1-2 นาที จากยอด H3 ของใบนี้
             </div>
           ) : r3.state === "waiting" ? (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">

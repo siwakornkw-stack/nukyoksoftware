@@ -1,5 +1,5 @@
 // Sends Express purchase orders to the app (read-only on the Express side).
-// Runs on the office PC that holds the Express data, e.g. every 10 minutes from
+// Runs on the office PC that holds the Express data, every minute from
 // Windows Task Scheduler:
 //
 //   node --env-file=.env scripts/express-po-sync.mjs          (changed POs only)
