@@ -19,7 +19,7 @@ const AP_TABS = [
   { key: "all", label: "ทั้งหมด" },
 ];
 // PK: approved but no R3 (ตั้งหนี้บัตรเครดิต) opened in Express yet.
-const PK_TABS = [AP_TABS[0], AP_TABS[1], { key: "r3wait", label: "รอเปิด R3" }, AP_TABS[2], AP_TABS[3]];
+const PK_TABS = [AP_TABS[0], AP_TABS[1], { key: "r3wait", label: "รอ R3" }, AP_TABS[2], AP_TABS[3]];
 const EX_OPTS = [
   { key: "", label: "ทุกสถานะ Express" },
   { key: "N", label: "ค้างรับ" },
@@ -65,7 +65,7 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
       orderBy: [{ PoDate: "desc" }, { PoNo: "desc" }],
       skip: (page - 1) * PAGE,
       take: PAGE,
-      select: { PoNo: true, PoDate: true, SupplierName: true, DepName: true, NetAmt: true, DocStat: true, MissingInExpress: true, ApprovalStatus: true, ApprovedBy: true, ContentHash: true, R3DocNo: true },
+      select: { PoNo: true, PoDate: true, SupplierName: true, DepName: true, NetAmt: true, DocStat: true, MissingInExpress: true, ApprovalStatus: true, ApprovedBy: true, ContentHash: true, R3DocNo: true, R3Status: true, R3Error: true },
     }),
     prisma.purchaseOrder.count({ where }),
     Promise.all(tabs.map((t) => prisma.purchaseOrder.count({ where: tabWhere(t.key) }))),

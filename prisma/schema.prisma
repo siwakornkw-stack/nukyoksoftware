@@ -888,7 +888,12 @@ model PurchaseOrder {
   Data Json // the whole PO as sent by the sync (header, supplier, lines)
   ContentHash String @db.VarChar(40)
   MissingInExpress Boolean @default(false) // deleted in Express since the last sync
-  R3DocNo String? @db.VarChar(20) // PK only: the R3 (ตั้งหนี้บัตรเครดิต) opened in Express referencing this PO
+  R3DocNo String? @db.VarChar(20) // PK only: the R3 (ตั้งหนี้บัตรเครดิต) in Express for this PO (read back by the sync)
+  // PK only, creating that R3 from the office PC (scripts/express-po-sync.mjs):
+  // queued (approved, PC will write it) | waiting (no H3 in Express yet) | error (see R3Error; admin retries)
+  R3Status String? @db.VarChar(10)
+  R3Error String?
+  R3UpdatedAt DateTime?
   SyncedAt DateTime @default(now())
   ApprovalStatus String? @db.VarChar(10) // null pending | approved | rejected
   ApprovalNote String?

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getSession, isAdmin } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { audit } from "@/lib/audit";
+import { isPk } from "@/lib/po/purchase-orders";
 
 export const dynamic = "force-dynamic";
 
@@ -41,11 +42,19 @@ export async function POST(req: Request) {
 
   // Conditional on the hash, so a sync landing between the check and this write
   // is not approved by mistake.
+  // PK: approving queues its R3 for the office PC (unless Express already has
+  // one); rejecting or taking the approval back drops it from the queue. An R3
+  // already written stays in Express: undoing it is the office's call.
+  const r3 = isPk(poNo)
+    ? status === "approved"
+      ? { R3Status: "queued", R3Error: null, R3UpdatedAt: new Date() }
+      : { R3Status: null, R3Error: null, R3UpdatedAt: new Date() }
+    : {};
   const { count } = await prisma.purchaseOrder.updateMany({
     where: { PurchaseOrderId, ...(status ? { ContentHash } : {}) },
     data: status
-      ? { ApprovalStatus: status, ApprovalNote: note || null, ApprovedBy: s.username, ApprovedAt: new Date() }
-      : { ApprovalStatus: null, ApprovalNote: null, ApprovedBy: null, ApprovedAt: null },
+      ? { ApprovalStatus: status, ApprovalNote: note || null, ApprovedBy: s.username, ApprovedAt: new Date(), ...r3 }
+      : { ApprovalStatus: null, ApprovalNote: null, ApprovedBy: null, ApprovedAt: null, ...r3 },
   });
   if (!count) return NextResponse.json({ error: stale }, { status: 409 });
 

@@ -94,20 +94,39 @@ export function effectiveApproval(p: { ApprovalStatus: string | null; DocStat: s
   return "pending";
 }
 
-// PK (ใบสั่งซื้อ-น้ำมัน(ใหม่)): once approved, the office opens an R3
-// (ตั้งหนี้บัตรเครดิต) in Express with "อ้างถึงใบสั่งซื้อ" = the PK number, so
-// Express copies the PK lines itself. We never write to Express; the sync reads
-// the R3 back (APTRN.PONUM) into R3DocNo.
+// PK (ใบสั่งซื้อ-น้ำมัน(ใหม่)) → H3 (paid on the card, keyed in Express) →
+// approved here → R3 (ตั้งหนี้บัตรเครดิต to 0009). Approving queues the R3
+// (R3Status "queued"); the office PC (scripts/express-po-sync.mjs, EXPRESS_R3_MODE)
+// writes it into Express from the PK's H3 and reports back through
+// /api/cron/express-r3. The sync reads every R3 back: one opened "อ้างถึงใบสั่งซื้อ"
+// (PONUM) or one we wrote (PK number in REFNUM) becomes R3DocNo.
 export const isPk = (poNo: string) => poNo.startsWith("PK");
 export const firstR3 = (po: Pick<PoData, "receipts">): string | null =>
   po.receipts.find((r) => r.docNo.startsWith("R3") && r.docStat !== "C")?.docNo ?? null;
-export type R3State = { state: "opened"; docNo: string } | { state: "waiting" } | null;
-export function r3State(p: { PoNo: string; ApprovalStatus: string | null; R3DocNo: string | null }): R3State {
+export type R3State =
+  | { state: "opened"; docNo: string }
+  | { state: "queued" }
+  | { state: "waiting" } // no H3 for the PK in Express yet
+  | { state: "error"; error: string }
+  | null;
+export function r3State(p: { PoNo: string; ApprovalStatus: string | null; R3DocNo: string | null; R3Status?: string | null; R3Error?: string | null }): R3State {
   if (!isPk(p.PoNo)) return null;
   if (p.R3DocNo) return { state: "opened", docNo: p.R3DocNo };
-  return p.ApprovalStatus === "approved" ? { state: "waiting" } : null;
+  if (p.ApprovalStatus !== "approved") return null;
+  if (p.R3Status === "waiting") return { state: "waiting" };
+  if (p.R3Status === "error") return { state: "error", error: p.R3Error || "สร้าง R3 ไม่สำเร็จ" };
+  return { state: "queued" };
 }
+// Approved PKs still without an R3 (queued, waiting for H3, or failed).
 export const r3WaitingWhere: Prisma.PurchaseOrderWhereInput = { PoNo: { startsWith: "PK" }, ApprovalStatus: "approved", R3DocNo: null };
+// What the office PC should try now: failed ones wait for an admin's "ลองใหม่".
+export const r3QueueWhere: Prisma.PurchaseOrderWhereInput = {
+  ...r3WaitingWhere,
+  TenantId: DEFAULT_TENANT_ID,
+  MissingInExpress: false,
+  DocStat: { not: "C" },
+  OR: [{ R3Status: null }, { R3Status: { in: ["queued", "waiting"] } }],
+};
 
 // effectiveApproval as a Prisma filter (tabs on /po). "approved" includes "auto".
 export function approvalWhere(k: string): Prisma.PurchaseOrderWhereInput {
@@ -196,7 +215,11 @@ export async function upsertPurchaseOrders(list: PoData[]): Promise<{ created: n
     const changed = old.ContentHash !== hash;
     await prisma.purchaseOrder.update({
       where: { PurchaseOrderId: old.PurchaseOrderId },
-      data: { ...columns(po, hash), ...(changed ? { ApprovalStatus: null, ApprovalNote: null, ApprovedBy: null, ApprovedAt: null } : {}) },
+      // A queued R3 was for the old figures: it leaves the queue with the approval.
+      data: {
+        ...columns(po, hash),
+        ...(changed ? { ApprovalStatus: null, ApprovalNote: null, ApprovedBy: null, ApprovedAt: null, R3Status: null, R3Error: null } : {}),
+      },
     });
     updated++;
     if (changed && old.ApprovalStatus) {

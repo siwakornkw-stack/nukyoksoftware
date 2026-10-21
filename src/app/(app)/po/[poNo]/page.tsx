@@ -6,6 +6,7 @@ import { num, thDate } from "@/lib/format";
 import { bkkDateTime, effectiveApproval, getPurchaseOrder, r3State, VAT_TYPE_LABEL } from "@/lib/po/purchase-orders";
 import { ApprovalBadge, DocStatBadge, R3Badge } from "../badges";
 import { CopyButton } from "../CopyButton";
+import { R3Retry } from "./R3Retry";
 import { ApprovalPanel } from "./ApprovalPanel";
 
 export const dynamic = "force-dynamic";
@@ -140,19 +141,21 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
           <div className="mb-2 font-semibold">ตั้งหนี้ R3 (บัตรเครดิต)</div>
           {r3.state === "opened" ? (
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">
-              ✅ เปิด R3 ใน Express แล้ว: <span className="font-semibold">{r3.docNo}</span>
+              ✅ มี R3 ใน Express แล้ว: <span className="font-semibold">{r3.docNo}</span> <CopyButton value={r3.docNo} label="คัดลอกเลข R3" />
+            </div>
+          ) : r3.state === "queued" ? (
+            <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 text-sm text-sky-300">
+              ⏳ อนุมัติแล้ว ระบบจะสร้าง R3 (ตั้งหนี้ 0009) ใน Express ให้เองภายในประมาณ 10 นาที จากยอด H3 ของใบนี้
+            </div>
+          ) : r3.state === "waiting" ? (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
+              ⏳ ยังไม่มี H3 ที่อ้างถึง {po.poNo} ใน Express: บันทึก H3 (อ้างถึงใบสั่งซื้อ = {po.poNo}) แล้วระบบจะสร้าง R3 ให้ในรอบถัดไป
             </div>
           ) : (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
-              <div className="font-medium text-amber-300">⏳ อนุมัติแล้ว รอเปิด R3 ใน Express</div>
-              <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-300">
-                <li>ใน Express ไปที่ ซื้อ → ซื้อเงินเชื่อ → R3-ตั้งหนี้ (บัตรเครดิต) แล้วกดเพิ่มเอกสารใหม่</li>
-                <li>
-                  ช่อง <b>อ้างถึงใบสั่งซื้อ</b> ใส่ <span className="font-semibold text-white">{po.poNo}</span> <CopyButton value={po.poNo} label="คัดลอกเลข PK" />
-                  {" "}Express จะดึงรายการจากใบนี้มาให้
-                </li>
-                <li>ตรวจรายการ แล้วบันทึก ระบบนี้จะเห็น R3 ภายใน 10 นาทีและเปลี่ยนเป็น &quot;เปิด R3 แล้ว&quot;</li>
-              </ol>
+            <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm">
+              <div className="font-medium text-rose-300">⛔ สร้าง R3 ไม่สำเร็จ</div>
+              <div className="mt-1 text-slate-300">{r3.error}</div>
+              {!!s && isAdmin(s) && <R3Retry poNo={po.poNo} />}
             </div>
           )}
         </Card>

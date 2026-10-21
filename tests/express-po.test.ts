@@ -98,7 +98,7 @@ describe("purchase orders", () => {
   });
 
   it("asks for an R3 only on approved PK orders", () => {
-    expect(r3State({ PoNo: "PK0000001", ApprovalStatus: "approved", R3DocNo: null })).toEqual({ state: "waiting" });
+    expect(r3State({ PoNo: "PK0000001", ApprovalStatus: "approved", R3DocNo: null })).toEqual({ state: "queued" });
     expect(r3State({ PoNo: "PK0000001", ApprovalStatus: null, R3DocNo: null })).toBeNull();
     expect(r3State({ PoNo: "PK0000001", ApprovalStatus: "approved", R3DocNo: "R3691013-01" })).toEqual({ state: "opened", docNo: "R3691013-01" });
     expect(r3State({ PoNo: "PO0000001", ApprovalStatus: "approved", R3DocNo: null })).toBeNull();
