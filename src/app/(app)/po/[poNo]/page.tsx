@@ -8,8 +8,11 @@ import { ApprovalBadge, DocStatBadge, R3Badge } from "../badges";
 import { CopyButton } from "../CopyButton";
 import { R3Retry } from "./R3Retry";
 import { ApprovalPanel } from "./ApprovalPanel";
+import { PayPanel } from "./PayPanel";
 import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
+import { getFuelMasters } from "@/lib/fleet/express-fuel";
+import { r3Of } from "@/lib/po/pz";
 
 export const dynamic = "force-dynamic";
 
@@ -23,12 +26,19 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   const sup = po.supplier;
   const r3 = r3State(row);
   // A PK written from a fuel bill on the web: its bill and odometer photos.
-  const fromBill = row.PoNo.startsWith("PK")
-    ? await prisma.expressFuelOrder.findFirst({
-        where: { TenantId: DEFAULT_TENANT_ID, PkNo: row.PoNo },
-        select: { RequestedBy: true, CreatedAt: true, GasolineCost: { select: { BillUrl: true, OdometerUrl: true, OdometerStart: true, OdometerEnd: true } } },
-      })
-    : null;
+  // Once its R3 is in Express: the transfer slip that pays it back (PZ).
+  const pk = row.PoNo.startsWith("PK");
+  const paidR3 = pk ? r3Of(row) : null;
+  const [fromBill, payment, masters] = await Promise.all([
+    pk
+      ? prisma.expressFuelOrder.findFirst({
+          where: { TenantId: DEFAULT_TENANT_ID, PkNo: row.PoNo },
+          select: { RequestedBy: true, CreatedAt: true, GasolineCost: { select: { BillUrl: true, OdometerUrl: true, OdometerStart: true, OdometerEnd: true } } },
+        })
+      : null,
+    paidR3 ? prisma.pkPayment.findUnique({ where: { PurchaseOrderId: row.PurchaseOrderId } }) : null,
+    paidR3 ? getFuelMasters() : null,
+  ]);
 
   const info: [string, React.ReactNode][] = [
     ["วันที่", thDate(po.poDate)],
@@ -194,6 +204,31 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             </div>
           )}
         </Card>
+      )}
+
+      {paidR3 && row.ApprovalStatus === "approved" && (
+        <PayPanel
+          poNo={po.poNo}
+          r3={paidR3}
+          payment={
+            payment && {
+              status: payment.Status,
+              pzNo: payment.PzNo ?? "",
+              slipUrl: payment.SlipUrl,
+              amount: Number(payment.Amount),
+              date: payment.PayDate.toISOString().slice(0, 10),
+              payType: payment.PayType,
+              ref: payment.BankRef ?? "",
+              error: payment.Error ?? "",
+              by: payment.RequestedBy,
+              at: payment.UpdatedAt.toISOString(),
+            }
+          }
+          banks={(masters?.banks ?? []).map((b) => ({ code: b.code, name: b.name, accountName: b.accountName }))}
+          creditor={masters?.creditor?.name ?? ""}
+          canPay={!!s && isAdmin(s)}
+          writer={!!masters?.pzWriter}
+        />
       )}
 
       {po.receipts.length > 0 && (

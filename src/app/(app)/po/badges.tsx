@@ -30,6 +30,14 @@ export function R3Badge({ r3 }: { r3: R3State }) {
   return <span className={`${pill} bg-sky-500/15 text-sky-300 border-sky-500/30`}>กำลังสร้าง R3</span>;
 }
 
+// PK only: paying its R3 back from a transfer slip (PZ in Express).
+export function PzBadge({ pay }: { pay: { Status: string; PzNo: string | null } | null }) {
+  if (!pay) return null;
+  if (pay.Status === "done") return <span className={`${pill} bg-emerald-500/15 text-emerald-300 border-emerald-500/30`}>PZ: {pay.PzNo}</span>;
+  if (pay.Status === "error") return <span className={`${pill} bg-rose-500/15 text-rose-300 border-rose-500/30`}>เปิด PZ ไม่สำเร็จ</span>;
+  return <span className={`${pill} bg-sky-500/15 text-sky-300 border-sky-500/30`}>กำลังเปิด PZ</span>;
+}
+
 // Effective approval (see effectiveApproval): our decision, or "auto" when
 // Express shows the goods fully received.
 export function ApprovalBadge({ k }: { k: ApprovalKey }) {

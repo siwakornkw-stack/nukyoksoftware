@@ -14,9 +14,10 @@ const round = (n, d = 2) => Math.round((Number(n) || 0) * 10 ** d) / 10 ** d;
 export function buildPurchaseOrders({ popr, poprit, apmas, istab, aptrn = /** @type {any[]} */ ([]) }) {
   const receiptsOf = new Map();
   for (const t of aptrn) {
-    // An R3 written by scripts/express-r3.mjs carries its PK number in REFNUM
-    // ("เลขที่บิล") rather than PONUM.
-    const po = t.PONUM || (t.DOCNUM.startsWith("R3") && /^PK\d+$/.test(t.REFNUM) ? t.REFNUM : "");
+    // The R3 (scripts/express-r3.mjs) and the PZ paying it back
+    // (scripts/express-pz.mjs) carry the PK number in REFNUM ("เลขที่บิล")
+    // rather than PONUM.
+    const po = t.PONUM || (/^(R3|PZ)/.test(t.DOCNUM) && /^PK\d+$/.test(t.REFNUM) ? t.REFNUM : "");
     if (!po) continue;
     if (!receiptsOf.has(po)) receiptsOf.set(po, []);
     receiptsOf.get(po).push({ docNo: t.DOCNUM, date: t.DOCDAT, netAmt: round(t.NETAMT), docStat: t.DOCSTAT });

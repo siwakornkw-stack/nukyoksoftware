@@ -907,9 +907,33 @@ model PurchaseOrder {
   ApprovalNote String?
   ApprovedBy String?
   ApprovedAt DateTime?
+  Payment PkPayment?
   @@unique([TenantId, PoNo])
   @@index([TenantId, PoDate])
   @@index([TenantId, ApprovalStatus])
+}
+
+// PK only: the transfer slip that pays the PK's R3 back to the card owner (one
+// slip per bill). The office PC writes the PZ (PZ-จ่ายชำระหนี้-น้ำมัน) into
+// Express from it (scripts/express-po-sync.mjs, EXPRESS_PZ_MODE).
+model PkPayment {
+  PkPaymentId String @id @default(uuid()) @db.VarChar(36)
+  TenantId String @db.VarChar(36)
+  PurchaseOrderId String @unique @db.VarChar(36)
+  PurchaseOrder PurchaseOrder @relation(fields: [PurchaseOrderId], references: [PurchaseOrderId])
+  Status String @db.VarChar(10) // queued | done | error
+  R3DocNo String @db.VarChar(20) // the R3 it pays
+  PayDate DateTime @db.Date
+  Amount Decimal @db.Decimal(12,2)
+  PayType String @db.VarChar(2) // Express payment type of the bank account it left from (B2, BA, BB)
+  BankRef String? @db.VarChar(40) // transfer reference printed on the slip
+  SlipUrl String
+  PzNo String? @db.VarChar(12)
+  Error String?
+  RequestedBy String
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now()) @updatedAt
+  @@index([TenantId, Status])
 }
 
 // A fuel bill saved on the web (GasolineCost) that staff asked to book in

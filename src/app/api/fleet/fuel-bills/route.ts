@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { opsAlert } from "@/lib/ops-alert";
+import { readError } from "@/lib/fuel/read-error";
 import { commitBills, expressChoices, lastOdo, parseRows, readBill, readOdometer, storeBillPhoto, storeOdometerPhoto, vehicleList } from "@/lib/fleet/fuel-bills";
 import { recentOrders } from "@/lib/fleet/express-fuel";
 
@@ -19,19 +19,6 @@ export async function GET(req: Request) {
   if (vid) return NextResponse.json({ lastOdo: await lastOdo(vid, q.get("date") ?? "") });
   const [vehicles, express, orders] = await Promise.all([vehicleList(), expressChoices(), recentOrders()]);
   return NextResponse.json({ vehicles, express, orders });
-}
-
-// Why the reader failed, in words that tell staff what to do next.
-async function readError(e: unknown): Promise<string> {
-  const msg = (e as Error)?.message ?? "";
-  console.error("fuel bill read failed:", msg);
-  // A rejected or missing key fails every photo; a retry or a better photo will not help.
-  if (/ (400|401|403):/.test(msg) || !process.env.GEMINI_API_KEY?.trim()) {
-    await opsAlert("gemini-key", "อ่านบิลน้ำมันไม่ได้", `Gemini ปฏิเสธคีย์ (GEMINI_API_KEY): ${msg.slice(0, 300)}`);
-    return "ระบบอ่านรูปใช้งานไม่ได้ตอนนี้ (คีย์ Gemini แจ้งผู้ดูแลระบบแล้ว) กรอกเองจากรูปได้";
-  }
-  if (/ 429:/.test(msg)) return "โควต้า AI อ่านรูปของวันนี้หมดแล้ว กรอกเองจากรูปได้";
-  return "AI อ่านรูปไม่สำเร็จ กรอกเองจากรูปได้";
 }
 
 // multipart file=<one bill photo>: store the photo and read it. No fuel row is saved.

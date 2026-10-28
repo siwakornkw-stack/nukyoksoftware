@@ -92,6 +92,51 @@ export async function extractOdometer(imageBuffer: Buffer, mediaType = "image/jp
   return askGemini<ExtractedOdometer>(imageBuffer, mediaType, ODOMETER_PROMPT, ODOMETER_SCHEMA);
 }
 
+// ---- Bank transfer slips (paying a PK's R3: K-BIZ slip images, SCB payment advice PDFs) ----
+
+const SLIP_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    is_slip: { type: "BOOLEAN" },
+    amount: nullableNum,
+    date: nullableStr,
+    time: nullableStr,
+    from_name: nullableStr,
+    from_account: nullableStr,
+    to_name: nullableStr,
+    to_account: nullableStr,
+    reference: nullableStr,
+  },
+  required: ["is_slip", "amount", "date", "time", "from_name", "from_account", "to_name", "to_account", "reference"],
+};
+
+const SLIP_PROMPT = `เอกสารนี้คือสลิปโอนเงินหรือใบแจ้งการชำระเงิน (Payment Advice) ของธนาคารในประเทศไทย อ่านแล้วตอบ:
+- amount: จำนวนเงินที่โอน (บาท) ถ้ามี "จำนวนเงินรวมทั้งหมด" ให้ใช้ยอดนั้น ไม่รวมค่าธรรมเนียม
+- date: วันที่โอน รูปแบบ YYYY-MM-DD เป็นปี ค.ศ. (เช่น "16 ต.ค. 69" คือ 2026-10-16, "28/10/2026" คือ 2026-10-28)
+- time: เวลาโอน รูปแบบ HH:MM
+- from_name / from_account: ชื่อบัญชีและเลขที่บัญชีผู้โอน (ผู้จ่ายเงิน) ตามที่พิมพ์ รวมตัว x ที่ปิดไว้ เช่น "xxx-x-x1029-x"
+- to_name / to_account: ชื่อบัญชีและเลขที่บัญชีผู้รับเงิน ตามที่พิมพ์
+- reference: เลขที่รายการ / เลขอ้างอิงการโอน (เช่น TRBS261016972001380 หรือ เลขที่กลุ่มรายการ)
+- is_slip: true ถ้าเป็นหลักฐานการโอนเงินจริง, false ถ้าเป็นเอกสารอื่น
+ช่องไหนอ่านไม่ออกหรือไม่มี ให้ใส่ null`;
+
+export interface ExtractedSlip {
+  is_slip: boolean;
+  amount: number | null;
+  date: string | null;
+  time: string | null;
+  from_name: string | null;
+  from_account: string | null;
+  to_name: string | null;
+  to_account: string | null;
+  reference: string | null;
+}
+
+// An image (image/jpeg …) or a PDF (application/pdf): Gemini reads both inline.
+export async function extractSlip(file: Buffer, mediaType: string): Promise<ExtractedSlip> {
+  return askGemini<ExtractedSlip>(file, mediaType, SLIP_PROMPT, SLIP_SCHEMA);
+}
+
 // One image + prompt -> JSON matching `schema`, trying each model in turn.
 async function askGemini<T>(imageBuffer: Buffer, mediaType: string, prompt: string, schema: object): Promise<T> {
   const key = process.env.GEMINI_API_KEY?.trim();

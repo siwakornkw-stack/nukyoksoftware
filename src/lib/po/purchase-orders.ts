@@ -121,6 +121,13 @@ export function r3State(p: { PoNo: string; ApprovalStatus: string | null; R3DocN
 }
 // Approved PKs still without an R3 (queued, waiting for H3, or failed).
 export const r3WaitingWhere: Prisma.PurchaseOrderWhereInput = { PoNo: { startsWith: "PK" }, ApprovalStatus: "approved", R3DocNo: null };
+// R3 in Express but not paid back yet (no slip, or its PZ is queued or failed).
+export const pzWaitingWhere: Prisma.PurchaseOrderWhereInput = {
+  PoNo: { startsWith: "PK" },
+  ApprovalStatus: "approved",
+  R3DocNo: { not: null },
+  OR: [{ Payment: { is: null } }, { Payment: { is: { Status: { not: "done" } } } }],
+};
 // What the office PC should try now: failed ones wait for an admin's "ลองใหม่".
 export const r3QueueWhere: Prisma.PurchaseOrderWhereInput = {
   ...r3WaitingWhere,

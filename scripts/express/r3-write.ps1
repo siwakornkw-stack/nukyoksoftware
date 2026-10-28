@@ -1,4 +1,4 @@
-param([string]$Dir, [string]$PlanFile, [string]$Ledger)
+﻿param([string]$Dir, [string]$PlanFile, [string]$Ledger)
 # Writes one R3 (ตั้งหนี้บัตรเครดิต) into an Express company folder, the way
 # Express records one keyed by hand. Must run in 32-bit PowerShell: the VFP OLE
 # DB provider is 32-bit only. The plan comes from scripts/express/r3.mjs.

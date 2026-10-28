@@ -6,8 +6,8 @@ import { PageHeader, Card } from "@/components/ui";
 import { baht, thDate } from "@/lib/format";
 import { dec } from "@/lib/fleet/queries";
 import { getSession, isAdmin } from "@/lib/auth";
-import { approvalWhere, bkkDateTime, effectiveApproval, getSyncInfo, r3State, r3WaitingWhere } from "@/lib/po/purchase-orders";
-import { ApprovalBadge, DocStatBadge, R3Badge } from "./badges";
+import { approvalWhere, bkkDateTime, effectiveApproval, getSyncInfo, pzWaitingWhere, r3State, r3WaitingWhere } from "@/lib/po/purchase-orders";
+import { ApprovalBadge, DocStatBadge, PzBadge, R3Badge } from "./badges";
 import { QuickApprove } from "./QuickApprove";
 
 export type SP = { q?: string; ap?: string; ex?: string; from?: string; to?: string; page?: string };
@@ -18,8 +18,9 @@ const AP_TABS = [
   { key: "rejected", label: "ไม่อนุมัติ" },
   { key: "all", label: "ทั้งหมด" },
 ];
-// PK: approved but no R3 (ตั้งหนี้บัตรเครดิต) opened in Express yet.
-const PK_TABS = [AP_TABS[0], AP_TABS[1], { key: "r3wait", label: "รอ R3" }, AP_TABS[2], AP_TABS[3]];
+// PK: approved but no R3 (ตั้งหนี้บัตรเครดิต) opened in Express yet, and R3s
+// not paid back yet (no transfer slip / PZ).
+const PK_TABS = [AP_TABS[0], AP_TABS[1], { key: "r3wait", label: "รอ R3" }, { key: "paywait", label: "รอจ่ายคืน" }, AP_TABS[2], AP_TABS[3]];
 const EX_OPTS = [
   { key: "", label: "ทุกสถานะ Express" },
   { key: "N", label: "ค้างรับ" },
@@ -56,7 +57,9 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
   };
   // AND, not a spread: both sides may filter DocStat (the tab and the Express
   // status filter), and a spread let the tab's condition replace the filter.
-  const tabWhere = (k: string): Prisma.PurchaseOrderWhereInput => ({ AND: [base, k === "r3wait" ? r3WaitingWhere : approvalWhere(k)] });
+  const tabWhere = (k: string): Prisma.PurchaseOrderWhereInput => ({
+    AND: [base, k === "r3wait" ? r3WaitingWhere : k === "paywait" ? pzWaitingWhere : approvalWhere(k)],
+  });
   const where = tabWhere(ap);
 
   const [rows, total, counts, sync, s] = await Promise.all([
@@ -65,7 +68,10 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
       orderBy: [{ PoDate: "desc" }, { PoNo: "desc" }],
       skip: (page - 1) * PAGE,
       take: PAGE,
-      select: { PoNo: true, PoDate: true, SupplierName: true, DepName: true, NetAmt: true, DocStat: true, MissingInExpress: true, ApprovalStatus: true, ApprovedBy: true, ContentHash: true, R3DocNo: true, R3Status: true, R3Error: true },
+      select: {
+        PoNo: true, PoDate: true, SupplierName: true, DepName: true, NetAmt: true, DocStat: true, MissingInExpress: true, ApprovalStatus: true,
+        ApprovedBy: true, ContentHash: true, R3DocNo: true, R3Status: true, R3Error: true, Payment: { select: { Status: true, PzNo: true } },
+      },
     }),
     prisma.purchaseOrder.count({ where }),
     Promise.all(tabs.map((t) => prisma.purchaseOrder.count({ where: tabWhere(t.key) }))),
@@ -171,8 +177,9 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
                           <ApprovalBadge k={k} />
                           {r.ApprovedBy && <div className="text-xs text-slate-500">{r.ApprovedBy}</div>}
                           {book === "pk" && (
-                            <div className="mt-1">
+                            <div className="mt-1 flex flex-wrap gap-1">
                               <R3Badge r3={r3State(r)} />
+                              <PzBadge pay={r.Payment} />
                             </div>
                           )}
                         </>

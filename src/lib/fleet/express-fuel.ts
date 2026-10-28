@@ -38,6 +38,15 @@ const mastersSchema = z.object({
   // The PC writes the PK/H3 (EXPRESS_FUEL_MODE=live). Off: nothing would ever
   // write a queued bill, so the web does not offer it.
   writer: z.boolean().catch(false),
+  // Paying a PK's R3 from a transfer slip (src/lib/po/pz.ts): the bank accounts
+  // payments leave from (Express payment types), the R3 creditor, and whether
+  // the PC writes the PZ (EXPRESS_PZ_MODE=live).
+  banks: z
+    .array(z.object({ code: text(2), name: text(60), account: text(15), accountName: text(80) }))
+    .max(30)
+    .catch([]),
+  creditor: z.object({ code: text(10), name: text(120) }).nullable().catch(null),
+  pzWriter: z.boolean().catch(false),
 });
 export type FuelMasters = z.infer<typeof mastersSchema> & { at: string };
 export type FuelItem = FuelMasters["items"][number];

@@ -171,6 +171,9 @@ describe("fuel bills -> Express choices", () => {
   const masters: FuelMasters = {
     at: "",
     writer: true,
+    banks: [],
+    creditor: null,
+    pzWriter: false,
     suppliers: [{ code: "บ015", name: "บางจากกรีนเนท", taxId: "", branch: "", uses: 9, last: "" }],
     items: [item("70-1826", "ค่าน้ำมันรถ 70-1826"), item("3297 (ก)", "ค่าน้ำมันรถกระบะ ก-3297 วีโก้"), item("SY200", "ค่าน้ำมัน SY200H")],
   };

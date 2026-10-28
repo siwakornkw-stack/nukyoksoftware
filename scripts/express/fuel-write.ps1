@@ -1,4 +1,4 @@
-param([string]$Dir, [string]$PlanFile, [string]$Ledger)
+﻿param([string]$Dir, [string]$PlanFile, [string]$Ledger)
 # Writes the PK (+ H3) for one fuel bill into an Express company folder, the way
 # staff key them. 32-bit PowerShell only (VFP OLE DB provider). Plan: fuel.mjs.
 #

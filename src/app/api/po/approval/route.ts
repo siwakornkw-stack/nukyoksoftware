@@ -38,6 +38,11 @@ export async function POST(req: Request) {
 
   const stale = "ใบสั่งซื้อนี้ถูกแก้ไขใน Express หลังจากเปิดหน้านี้ กดรีเฟรชแล้วตรวจอีกครั้ง";
   if (status && row.ContentHash !== hash) return NextResponse.json({ error: stale }, { status: 409 });
+  // A PK whose R3 is being paid back (PZ) keeps its approval.
+  if (status !== "approved" && isPk(poNo)) {
+    const pay = await prisma.pkPayment.findUnique({ where: { PurchaseOrderId: row.PurchaseOrderId }, select: { Status: true, PzNo: true } });
+    if (pay && pay.Status !== "error") return NextResponse.json({ error: `ใบนี้มีการจ่ายคืนแล้ว (${pay.PzNo ?? "กำลังเปิด PZ"}) เปลี่ยนผลอนุมัติไม่ได้` }, { status: 400 });
+  }
   const { PurchaseOrderId, ContentHash, ...before } = row;
 
   // Conditional on the hash, so a sync landing between the check and this write
