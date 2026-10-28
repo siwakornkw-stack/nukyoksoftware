@@ -29,6 +29,18 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ type: strin
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
+  // A fuel bill booked in Express (PK/H3) stays: deleting it here would leave
+  // those documents without their bill. One being written right now waits.
+  if (def.key === "gasoline") {
+    const order = await prisma.expressFuelOrder.findUnique({ where: { GasolineCostId: id } });
+    if (order?.Status === "done") {
+      const docs = [order.PkNo, order.H3No].filter(Boolean).join(" / ");
+      return NextResponse.json({ error: `บิลนี้เปิดใน Express แล้ว (${docs}) ลบไม่ได้ ต้องจัดการใน Express ก่อน` }, { status: 400 });
+    }
+    if (order?.Status === "queued") return NextResponse.json({ error: "บิลนี้กำลังเปิดใน Express รอสักครู่แล้วลองใหม่" }, { status: 400 });
+    if (order) await prisma.expressFuelOrder.delete({ where: { ExpressFuelOrderId: order.ExpressFuelOrderId } });
+  }
+
   await delegate(def).delete({ where: { [def.idField]: id } });
   await audit(`record:${def.key}`, id, "delete", session.username, row, null);
   return NextResponse.json({ ok: true });

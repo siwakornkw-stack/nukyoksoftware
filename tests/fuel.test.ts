@@ -19,6 +19,7 @@ const fill = (vehicleId: string, date: string, liters: number, odoStart: number,
   distance: null,
   receiver: "",
   billUrl: "",
+  odoUrl: "",
 });
 
 // A month in which the vehicle drives `km` on `liters` (km/L = km / liters).

@@ -88,7 +88,8 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
         title={title}
         subtitle={
           sync
-            ? `ดึงจาก Express ล่าสุด ${bkkDateTime(sync.at)} · ${sync.count.toLocaleString("th-TH")} ใบ · ดูอย่างเดียว ไม่แก้ไขข้อมูลใน Express`
+            ? `ดึงจาก Express ล่าสุด ${bkkDateTime(sync.at)} · ${sync.count.toLocaleString("th-TH")} ใบ` +
+              (book === "pk" ? " · อนุมัติแล้วระบบสร้าง R3 ใน Express ให้" : " · ดูอย่างเดียว ไม่แก้ไขข้อมูลใน Express")
             : "ยังไม่เคยดึงข้อมูลจาก Express (รัน scripts/express-po-sync.mjs บนเครื่องที่มี Express)"
         }
       />

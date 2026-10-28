@@ -226,6 +226,11 @@ model Vehicle {
   // Null = the global default (AppSetting oil_interval_km).
   OilInterval Int?
   MonthlyBudget Decimal? @db.Decimal(12,2) // fuel + repairs per month; null = no budget
+  // This vehicle in Express Accounting: the item (STKCOD) and department (DEPCOD)
+  // its fuel is bought under, for PK/H3 written from fuel bills. Chosen once on
+  // the bill import, remembered here.
+  ExpressItemCode String? @db.VarChar(20)
+  ExpressDepCode String? @db.VarChar(4)
   Note String?
   Img String?
   CreatedAt DateTime @default(now())
@@ -576,6 +581,9 @@ model GasolineCost {
   ReceiverName String?
   // Photo of the bill (/uploads/...), kept from the bill-photo import or the add form.
   BillUrl String?
+  // Photo of the odometer / hour meter at this fill (bill-photo import).
+  OdometerUrl String?
+  ExpressOrder ExpressFuelOrder?
   // Checked one by one at /fleet/fuel/audit: "ok" | "problem" (with a note), null = not
   // checked. Any later edit clears it, since the check was of the old values.
   AuditStatus String? @db.VarChar(10)
@@ -902,6 +910,37 @@ model PurchaseOrder {
   @@unique([TenantId, PoNo])
   @@index([TenantId, PoDate])
   @@index([TenantId, ApprovalStatus])
+}
+
+// A fuel bill saved on the web (GasolineCost) that staff asked to book in
+// Express: the office PC writes a PK (ใบสั่งซื้อ-น้ำมัน(ใหม่)) and, for an
+// ordinary vehicle, the H3 that receives it (cash purchase on the card, input
+// VAT). The bill's figures are copied at save time so a later edit of the fuel
+// row cannot change what Express books. The R3 follows the usual way: an admin
+// approves the PK on /po/pk.
+model ExpressFuelOrder {
+  ExpressFuelOrderId String @id @default(uuid()) @db.VarChar(36)
+  TenantId String @db.VarChar(36)
+  GasolineCostId String @unique @db.VarChar(36)
+  GasolineCost GasolineCost @relation(fields: [GasolineCostId], references: [GasolineCostId])
+  // queued | done | error | cancelled
+  Status String @db.VarChar(10)
+  WithH3 Boolean // false: the PK only, staff key the H3 (stock items such as SY140)
+  SupplierCode String @db.VarChar(10)
+  ItemCode String @db.VarChar(20)
+  DepCode String @db.VarChar(4)
+  Date DateTime @db.Date
+  Invoice String @db.VarChar(15) // tax invoice number: H3 "เลขที่บิล" and the VAT report
+  Liters Decimal @db.Decimal(10,2)
+  Price Decimal @db.Decimal(10,4) // per litre, as on the bill
+  Amount Decimal @db.Decimal(12,2) // including VAT
+  PkNo String? @db.VarChar(12)
+  H3No String? @db.VarChar(12)
+  Error String?
+  RequestedBy String
+  CreatedAt DateTime @default(now())
+  UpdatedAt DateTime @default(now()) @updatedAt
+  @@index([TenantId, Status])
 }
 
 // ======================================================================

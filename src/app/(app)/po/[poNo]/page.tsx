@@ -8,6 +8,8 @@ import { ApprovalBadge, DocStatBadge, R3Badge } from "../badges";
 import { CopyButton } from "../CopyButton";
 import { R3Retry } from "./R3Retry";
 import { ApprovalPanel } from "./ApprovalPanel";
+import { prisma } from "@/lib/db";
+import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +22,13 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   const { row, po } = found;
   const sup = po.supplier;
   const r3 = r3State(row);
+  // A PK written from a fuel bill on the web: its bill and odometer photos.
+  const fromBill = row.PoNo.startsWith("PK")
+    ? await prisma.expressFuelOrder.findFirst({
+        where: { TenantId: DEFAULT_TENANT_ID, PkNo: row.PoNo },
+        select: { RequestedBy: true, CreatedAt: true, GasolineCost: { select: { BillUrl: true, OdometerUrl: true, OdometerStart: true, OdometerEnd: true } } },
+      })
+    : null;
 
   const info: [string, React.ReactNode][] = [
     ["วันที่", thDate(po.poDate)],
@@ -122,12 +131,38 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
         </dl>
       </Card>
 
+      {fromBill && (
+        <Card className="mb-4">
+          <div className="mb-2 font-semibold">บิลน้ำมันต้นทาง</div>
+          <div className="mb-2 text-xs text-slate-400">
+            บันทึกบนเว็บโดย {fromBill.RequestedBy} · {bkkDateTime(fromBill.CreatedAt)}
+            {Number(fromBill.GasolineCost.OdometerEnd) > 0 && (
+              <>
+                {" "}· เลขไมล์ {Number(fromBill.GasolineCost.OdometerStart) > 0 && <>{num(Number(fromBill.GasolineCost.OdometerStart))} → </>}
+                {num(Number(fromBill.GasolineCost.OdometerEnd))}
+              </>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {[["รูปบิล", fromBill.GasolineCost.BillUrl], ["รูปเลขไมล์", fromBill.GasolineCost.OdometerUrl]].map(([label, url]) =>
+              url ? (
+                <a key={label} href={url} target="_blank" rel="noreferrer" className="block w-48">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- private /uploads photo behind the session */}
+                  <img src={url} alt={label ?? ""} className="h-48 w-48 rounded-lg bg-slate-900 object-contain" />
+                  <span className="mt-1 block text-center text-xs text-slate-400">{label}</span>
+                </a>
+              ) : null
+            )}
+          </div>
+        </Card>
+      )}
+
       <ApprovalPanel
         poNo={po.poNo}
         hash={row.ContentHash}
         canApprove={!!s && isAdmin(s)}
         cancelled={row.DocStat === "C" || row.MissingInExpress}
-        received={row.DocStat === "M"}
+        received={effectiveApproval(row) === "auto"}
         initial={{
           approvalStatus: row.ApprovalStatus,
           approvalNote: row.ApprovalNote ?? "",

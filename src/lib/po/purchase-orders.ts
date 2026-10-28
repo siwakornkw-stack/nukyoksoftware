@@ -86,10 +86,12 @@ export type ApprovalKey = keyof typeof APPROVAL_LABEL;
 
 // The approval a PO effectively has. A PO Express shows as fully received (M)
 // counts as approved even without a decision here (the office's rule: goods
-// received means it was approved). Cancelled/deleted POs need no decision.
-export function effectiveApproval(p: { ApprovalStatus: string | null; DocStat: string; MissingInExpress?: boolean }): ApprovalKey {
+// received means it was approved). Not a PK: an admin's approval here is what
+// writes its R3, and a PK is already received when its H3 is keyed or written
+// with it from a fuel bill. Cancelled/deleted POs need no decision.
+export function effectiveApproval(p: { PoNo: string; ApprovalStatus: string | null; DocStat: string; MissingInExpress?: boolean }): ApprovalKey {
   if (p.ApprovalStatus === "approved" || p.ApprovalStatus === "rejected") return p.ApprovalStatus;
-  if (p.DocStat === "M") return "auto";
+  if (p.DocStat === "M" && !isPk(p.PoNo)) return "auto";
   if (p.DocStat === "C" || p.MissingInExpress) return "none";
   return "pending";
 }
@@ -130,8 +132,9 @@ export const r3QueueWhere: Prisma.PurchaseOrderWhereInput = {
 
 // effectiveApproval as a Prisma filter (tabs on /po). "approved" includes "auto".
 export function approvalWhere(k: string): Prisma.PurchaseOrderWhereInput {
-  if (k === "pending") return { ApprovalStatus: null, DocStat: { notIn: ["M", "C"] }, MissingInExpress: false };
-  if (k === "approved") return { OR: [{ ApprovalStatus: "approved" }, { ApprovalStatus: null, DocStat: "M" }] };
+  const pk = { PoNo: { startsWith: "PK" } };
+  if (k === "pending") return { ApprovalStatus: null, MissingInExpress: false, OR: [{ DocStat: { notIn: ["M", "C"] } }, { DocStat: "M", ...pk }] };
+  if (k === "approved") return { OR: [{ ApprovalStatus: "approved" }, { ApprovalStatus: null, DocStat: "M", NOT: pk }] };
   if (k === "rejected") return { ApprovalStatus: "rejected" };
   return {};
 }

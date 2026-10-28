@@ -7,12 +7,19 @@ import { contentHash, effectiveApproval, firstR3, poSchema, r3State } from "@/li
 
 describe("effective approval", () => {
   it("treats a fully received PO as approved unless someone decided otherwise", () => {
-    expect(effectiveApproval({ ApprovalStatus: null, DocStat: "N" })).toBe("pending");
-    expect(effectiveApproval({ ApprovalStatus: null, DocStat: "M" })).toBe("auto");
-    expect(effectiveApproval({ ApprovalStatus: "rejected", DocStat: "M" })).toBe("rejected");
-    expect(effectiveApproval({ ApprovalStatus: "approved", DocStat: "N" })).toBe("approved");
-    expect(effectiveApproval({ ApprovalStatus: null, DocStat: "C" })).toBe("none");
-    expect(effectiveApproval({ ApprovalStatus: null, DocStat: "N", MissingInExpress: true })).toBe("none");
+    const po = { PoNo: "PO6900123" };
+    expect(effectiveApproval({ ...po, ApprovalStatus: null, DocStat: "N" })).toBe("pending");
+    expect(effectiveApproval({ ...po, ApprovalStatus: null, DocStat: "M" })).toBe("auto");
+    expect(effectiveApproval({ ...po, ApprovalStatus: "rejected", DocStat: "M" })).toBe("rejected");
+    expect(effectiveApproval({ ...po, ApprovalStatus: "approved", DocStat: "N" })).toBe("approved");
+    expect(effectiveApproval({ ...po, ApprovalStatus: null, DocStat: "C" })).toBe("none");
+    expect(effectiveApproval({ ...po, ApprovalStatus: null, DocStat: "N", MissingInExpress: true })).toBe("none");
+  });
+
+  it("leaves a received PK waiting for the admin (that approval writes its R3)", () => {
+    expect(effectiveApproval({ PoNo: "PK0000002", ApprovalStatus: null, DocStat: "M" })).toBe("pending");
+    expect(effectiveApproval({ PoNo: "PK0000002", ApprovalStatus: "approved", DocStat: "M" })).toBe("approved");
+    expect(effectiveApproval({ PoNo: "PK0000002", ApprovalStatus: null, DocStat: "C" })).toBe("none");
   });
 });
 

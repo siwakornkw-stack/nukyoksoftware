@@ -10,10 +10,15 @@
 //   EXPRESS_SYNC_URL="https://office.example.com"   the app origin
 //   EXPRESS_SYNC_SECRET="..."                       same value as on the server
 //
-// Reading POs never writes to Express. The one exception is the R3 step
-// (EXPRESS_R3_MODE="live"): for each approved PK the app queues, it writes the
-// R3 (ตั้งหนี้บัตรเครดิต) from the PK's H3 through scripts/express-r3.mjs, after
-// copying the six tables it touches to var/express-backups/r3-<time>/.
+// Reading POs never writes to Express. The exceptions, each with its own switch:
+//   EXPRESS_FUEL_MODE="live": fuel bills saved on the web with "สั่งเปิด PK + H3"
+//     get their PK (+ H3) written by scripts/express-fuel.mjs, after copying the
+//     twelve tables it touches to var/express-backups/fuel-<time>/.
+//   EXPRESS_R3_MODE="live": for each approved PK the app queues, the R3
+//     (ตั้งหนี้บัตรเครดิต) is written from the PK's H3 by scripts/express-r3.mjs,
+//     after copying the six tables it touches to var/express-backups/r3-<time>/.
+// Every 15 minutes it also sends the fuel master data (suppliers, vehicle items)
+// the web needs for "สั่งเปิด PK + H3" (read-only).
 // The fingerprints of what was sent are kept in
 // var/express-po-sync.json (in this project, not next to the Express files),
 // so an unchanged PO is not sent again.
@@ -22,6 +27,10 @@ import path from "path";
 import { readExpress, poHash } from "./express/po.mjs";
 import { planR3 } from "./express/r3.mjs";
 import { readR3Tables, writeR3 } from "./express-r3.mjs";
+import { readDbf } from "./express/dbf.mjs";
+import { buildFuelMasters } from "./express/fuel-masters.mjs";
+import { planFuel } from "./express/fuel.mjs";
+import { readFuelTables, writeFuel } from "./express-fuel.mjs";
 
 const DIR = process.env.EXPRESS_DIR || "";
 const BASE = (process.env.EXPRESS_SYNC_URL || process.env.APP_BASE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
@@ -70,18 +79,18 @@ if (!full) {
 const R3_MODE = process.env.EXPRESS_R3_MODE || "off";
 const R3_TABLES = ["APTRN", "STCRD", "GLJNL", "GLJNLIT", "APMAS", "APBAL"];
 const BACKUPS = path.resolve("var/express-backups");
-const KEEP_R3_BACKUPS = 30;
+const KEEP_BACKUPS = 30; // per kind (r3-, fuel-)
 
-// Copy the six tables an R3 touches (with their indexes) before writing.
-function backupR3Tables() {
-  const dest = path.join(BACKUPS, `r3-${at.replace(/[:.]/g, "-")}`);
+// Copy the tables a write touches (with their indexes) before writing.
+function backupTables(kind, tables) {
+  const dest = path.join(BACKUPS, `${kind}-${at.replace(/[:.]/g, "-")}`);
   mkdirSync(dest, { recursive: true });
   const files = readdirSync(DIR);
-  for (const t of R3_TABLES) {
+  for (const t of tables) {
     for (const f of files.filter((n) => new RegExp(`^${t}\\.(dbf|cdx)$`, "i").test(n))) copyFileSync(path.join(DIR, f), path.join(dest, f));
   }
-  const old = readdirSync(BACKUPS).filter((n) => n.startsWith("r3-")).sort();
-  for (const n of old.slice(0, Math.max(0, old.length - KEEP_R3_BACKUPS))) rmSync(path.join(BACKUPS, n), { recursive: true, force: true });
+  const old = readdirSync(BACKUPS).filter((n) => n.startsWith(`${kind}-`)).sort();
+  for (const n of old.slice(0, Math.max(0, old.length - KEEP_BACKUPS))) rmSync(path.join(BACKUPS, n), { recursive: true, force: true });
   return dest;
 }
 
@@ -109,7 +118,7 @@ async function runR3Queue() {
     else if (plan.status === "waiting") results.push({ pk: pkNo, status: "waiting", error: plan.reason });
     else if (plan.status !== "ready") results.push({ pk: pkNo, status: "error", error: plan.reason });
     else {
-      if (!backup) backup = backupR3Tables();
+      if (!backup) backup = backupTables("r3", R3_TABLES);
       const w = writeR3(DIR, plan);
       if (w.ok) {
         results.push({ pk: pkNo, status: "done", docNo: w.docNo });
@@ -119,6 +128,55 @@ async function runR3Queue() {
   }
   await r3Api("POST", { results });
   console.log(at, `express-r3: ${results.map((r) => `${r.pk} ${r.status}${r.docNo ? ` ${r.docNo}` : ""}${r.error ? ` (${r.error})` : ""}`).join(", ")}${backup ? ` · backup ${backup}` : ""}`);
+}
+
+// ---- Fuel bills -> PK (+ H3) (written into Express; EXPRESS_FUEL_MODE=live turns it on) ----
+const FUEL_MODE = process.env.EXPRESS_FUEL_MODE || "off";
+const FUEL_TABLES = ["POPR", "POPRIT", "ISRUN", "STMAS", "APTRN", "STCRD", "GLJNL", "GLJNLIT", "ISVAT", "APRCPCQ", "APBAL", "APMAS"];
+const MASTERS_EVERY_MS = 15 * 60 * 1000;
+
+async function fuelApi(method, body) {
+  const res = await fetch(`${BASE}/api/cron/express-fuel`, {
+    method,
+    headers: { Authorization: `Bearer ${SECRET}`, "Content-Type": "application/json" },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`${res.status} ${out.error || ""}`.trim());
+  return out;
+}
+
+// Suppliers and vehicle items for the web's "สั่งเปิด PK + H3", and whether this
+// PC writes queued bills (the web only offers it while it does).
+async function pushFuelMasters() {
+  const t = (n) => readDbf(path.join(DIR, `${n}.DBF`));
+  const masters = buildFuelMasters({ popr: t("POPR"), poprit: t("POPRIT"), stmas: t("STMAS"), apmas: t("APMAS"), istab: t("ISTAB"), aptrn: t("APTRN"), stcrd: t("STCRD") });
+  await fuelApi("POST", { masters: { ...masters, writer: FUEL_MODE === "live" } });
+}
+
+async function runFuelQueue() {
+  if (FUEL_MODE !== "live") return;
+  const { orders = [] } = await fuelApi("GET");
+  if (!orders.length) return;
+  let tables = readFuelTables(DIR);
+  let backup = "";
+  const results = [];
+  for (const order of orders) {
+    const plan = planFuel(order, tables);
+    if (plan.status === "exists") results.push({ id: order.id, status: "done", pkNo: plan.pkNo, h3No: plan.h3No });
+    else if (plan.status !== "ready") results.push({ id: order.id, status: "error", error: plan.reason });
+    else {
+      if (!backup) backup = backupTables("fuel", FUEL_TABLES);
+      const w = writeFuel(DIR, plan);
+      if (w.ok) {
+        results.push({ id: order.id, status: "done", pkNo: w.pkNo, h3No: w.h3No });
+        tables = readFuelTables(DIR); // the next bill must see these numbers
+      } else results.push({ id: order.id, status: w.busy ? "busy" : "error", error: w.error });
+    }
+  }
+  await fuelApi("POST", { results });
+  const docs = (r) => [r.pkNo, r.h3No].filter(Boolean).join(" ");
+  console.log(at, `express-fuel: ${results.map((r) => `${r.id.slice(0, 8)} ${r.status}${docs(r) ? ` ${docs(r)}` : ""}${r.error ? ` (${r.error})` : ""}`).join(", ")}${backup ? ` · backup ${backup}` : ""}`);
 }
 
 async function post(body) {
@@ -163,13 +221,32 @@ try {
   const r = await post({ company, allPoNos: purchaseOrders.map((po) => po.poNo) });
 
   for (const no of Object.keys(hashes)) if (!firstHash.has(no)) delete hashes[no];
-  writeFileSync(STATE, JSON.stringify({ at, hashes }));
+  // Fuel master data every 15 minutes, and at once when EXPRESS_FUEL_MODE
+  // changed. A failed send waits as well: a server without the route would
+  // otherwise cost a read of seven tables every minute.
+  let { fuelMastersAt, fuelMode } = state;
+  if (!fuelMastersAt || fuelMode !== FUEL_MODE || Date.now() - new Date(fuelMastersAt).getTime() >= MASTERS_EVERY_MS) {
+    fuelMastersAt = at;
+    fuelMode = FUEL_MODE;
+    try {
+      await pushFuelMasters();
+    } catch (e) {
+      console.error(at, "express-fuel masters failed:", e?.message || e);
+    }
+  }
+  writeFileSync(STATE, JSON.stringify({ at, hashes, fuelMastersAt, fuelMode }));
   console.log(
     at,
     `express-po: ${purchaseOrders.length} POs, sent ${changed.length} (new ${created}, updated ${updated}), missing ${r.missing ?? 0}` +
       (unsettled ? `, ${unsettled} being edited (next run)` : "")
   );
 
+  try {
+    await runFuelQueue();
+  } catch (e) {
+    console.error(at, "express-fuel failed:", e?.message || e);
+    process.exitCode = 1;
+  }
   try {
     await runR3Queue();
   } catch (e) {

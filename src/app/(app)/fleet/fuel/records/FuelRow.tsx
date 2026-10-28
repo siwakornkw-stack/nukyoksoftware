@@ -81,7 +81,14 @@ export function FuelRow({
           )}
         </td>
         <td className={`${td} text-right`}>{r.odoStart ? num(r.odoStart, 2) : "-"}</td>
-        <td className={`${td} text-right`}>{r.odoEnd ? num(r.odoEnd, 2) : "-"}</td>
+        <td className={`${td} text-right`}>
+          {r.odoEnd ? num(r.odoEnd, 2) : "-"}
+          {r.odoUrl && (
+            <a href={r.odoUrl} target="_blank" rel="noreferrer" title="เปิดรูปเลขไมล์" className="ml-1.5 text-sky-400 hover:text-sky-300">
+              📷
+            </a>
+          )}
+        </td>
         <td className={`${td} text-right`}>{r.distance ? num(r.distance, 2) : "-"}</td>
         <td className={`${td} text-right`}>{baht(r.amount)}</td>
         <td className={`${td} text-right`}>{num(r.liters, 2)}</td>

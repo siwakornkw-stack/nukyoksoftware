@@ -215,6 +215,11 @@ function AuditCard({
                 <a href={r.billUrl} target="_blank" rel="noreferrer" className="rounded-lg px-2.5 py-1.5 bg-slate-800/60 hover:bg-slate-700/60">
                   🔍 เปิดรูปเต็ม
                 </a>
+                {r.odoUrl && (
+                  <a href={r.odoUrl} target="_blank" rel="noreferrer" className="rounded-lg px-2.5 py-1.5 bg-slate-800/60 hover:bg-slate-700/60">
+                    📷 รูปเลขไมล์
+                  </a>
+                )}
               </div>
             </>
           ) : (

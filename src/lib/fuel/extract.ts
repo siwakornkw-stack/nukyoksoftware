@@ -61,17 +61,50 @@ export async function extractBill(
   imageBuffer: Buffer,
   mediaType = "image/jpeg"
 ): Promise<ExtractedBill> {
+  return askGemini<ExtractedBill>(imageBuffer, mediaType, PROMPT, BILL_SCHEMA);
+}
+
+// ---- Odometer / hour-meter photos (fuel bill import, one per bill) ----
+
+const ODOMETER_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    is_meter: { type: "BOOLEAN" },
+    reading: nullableNum,
+    unit: nullableStr,
+  },
+  required: ["is_meter", "reading", "unit"],
+};
+
+const ODOMETER_PROMPT = `รูปนี้คือหน้าปัดเลขไมล์รถ (กิโลเมตร) หรือชั่วโมงทำงานของเครื่องจักร (ชั่วโมง) อ่านแล้วตอบ:
+- reading: ตัวเลขเลขไมล์รวม (ODO / TOTAL) หรือชั่วโมงทำงานรวม ไม่ใช่ทริป (TRIP A/B) ไม่ใช่ความเร็วหรือรอบเครื่อง ถ้ามีทศนิยม (ตัวเลขช่องสุดท้ายสีต่าง หรือหลังจุด) ให้ใส่เป็นทศนิยม
+- unit: "km" ถ้าเป็นกิโลเมตร, "hours" ถ้าเป็นชั่วโมงเครื่องจักร, null ถ้าไม่แน่ใจ
+- is_meter: true ถ้ารูปนี้เป็นหน้าปัดเลขไมล์หรือชั่วโมงจริง, false ถ้าเป็นรูปอื่น
+อ่านไม่ออกให้ใส่ reading เป็น null`;
+
+export interface ExtractedOdometer {
+  is_meter: boolean;
+  reading: number | null;
+  unit: string | null;
+}
+
+export async function extractOdometer(imageBuffer: Buffer, mediaType = "image/jpeg"): Promise<ExtractedOdometer> {
+  return askGemini<ExtractedOdometer>(imageBuffer, mediaType, ODOMETER_PROMPT, ODOMETER_SCHEMA);
+}
+
+// One image + prompt -> JSON matching `schema`, trying each model in turn.
+async function askGemini<T>(imageBuffer: Buffer, mediaType: string, prompt: string, schema: object): Promise<T> {
   const key = process.env.GEMINI_API_KEY?.trim();
   const body = {
     contents: [
       {
         parts: [
           { inline_data: { mime_type: mediaType, data: imageBuffer.toString("base64") } },
-          { text: PROMPT },
+          { text: prompt },
         ],
       },
     ],
-    generationConfig: { responseMimeType: "application/json", responseSchema: BILL_SCHEMA },
+    generationConfig: { responseMimeType: "application/json", responseSchema: schema },
   };
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const TRANSIENT = [429, 500, 502, 503, 504];
@@ -100,7 +133,7 @@ export async function extractBill(
         const data = await res.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!text) throw new Error("gemini: no text in response: " + JSON.stringify(data).slice(0, 400));
-        return JSON.parse(text) as ExtractedBill;
+        return JSON.parse(text) as T;
       }
       lastErr = `gemini ${model} ${res.status}: ${(await res.text()).slice(0, 200)}`;
       if (TRANSIENT.includes(res.status) && attempt < 3) {

@@ -21,7 +21,7 @@ export function ApprovalPanel({
   hash: string;
   canApprove: boolean;
   cancelled: boolean;
-  received: boolean; // Express shows the goods fully received: counts as approved
+  received: boolean; // Express shows the goods fully received: counts as approved (not for a PK)
   initial: Approval;
 }) {
   const router = useRouter();

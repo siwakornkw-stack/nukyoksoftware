@@ -10,9 +10,10 @@ import { normalizeDate } from "./dates";
 import { plateText } from "./plates";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
-import { extractBill } from "@/lib/fuel/extract";
+import { extractBill, extractOdometer } from "@/lib/fuel/extract";
 import { put } from "@/lib/storage";
 import { fuelKey, loadMatcher, rememberAlias } from "./office-import";
+import { checkExpressPick, getFuelMasters, guessSupplier, queueOrder, rememberStations, stationSuppliers, suggestItem, type ExpressPick } from "./express-fuel";
 
 const T = DEFAULT_TENANT_ID;
 
@@ -24,15 +25,20 @@ export interface BillRow {
   invoice: string;
   item: string;
   liters: number;
+  price: number; // per litre as on the bill, 0 = unknown (worked out from amount / liters)
   amount: number;
   odoStart: number;
   odoEnd: number;
   receiver: string;
   billUrl: string; // "" when none
+  odoUrl: string; // odometer / hour-meter photo, "" when none
+  station: string; // as read from the bill: remembered against the Express supplier picked
+  express: ExpressPick | null; // book this bill in Express (PK, + H3 when the item allows)
 }
 
-// Only photos this import stored itself (storeBillPhoto) may be attached.
+// Only photos this import stored itself (storeBillPhoto / storeOdometerPhoto) may be attached.
 const BILL_URL = /^\/uploads\/fuel-bills\/\d{4}-\d{2}\/[0-9a-f-]{36}\.jpg$/;
+const ODO_URL = /^\/uploads\/fuel-odometer\/\d{4}-\d{2}\/[0-9a-f-]{36}\.jpg$/;
 
 // The same bill already stored: same import key, or same invoice number and
 // amount. The number alone is not enough: a short receipt number ("4372910")
@@ -55,9 +61,33 @@ async function existing(vehicleId: string | null, r: { date: string; invoice: st
   return g ? `มีอยู่แล้ว: ${plateText(g.Vehicle)} ${thDate(g.DateTime.toISOString())} ${baht(Number(g.Amount))}` : null;
 }
 
+// Vehicles for the dropdown, each with its Express fuel item: the one chosen
+// before, else a suggestion from the plate.
 export async function vehicleList() {
-  const { vehicles } = await loadMatcher();
-  return vehicles.map((v) => ({ id: v.VehicleId, plate: plateText(v), model: v.Model }));
+  const [{ vehicles }, masters, mapped] = await Promise.all([
+    loadMatcher(),
+    getFuelMasters(),
+    prisma.vehicle.findMany({ where: { TenantId: T }, select: { VehicleId: true, ExpressItemCode: true } }),
+  ]);
+  const chosen = new Map(mapped.map((m) => [m.VehicleId, m.ExpressItemCode]));
+  return vehicles.map((v) => ({
+    id: v.VehicleId,
+    plate: plateText(v),
+    model: v.Model,
+    expressItem: chosen.get(v.VehicleId) || (masters ? suggestItem(v, masters.items) : ""),
+  }));
+}
+
+// Suppliers and items for the Express choices on the import page.
+export async function expressChoices() {
+  const masters = await getFuelMasters();
+  if (!masters) return null;
+  return {
+    at: masters.at,
+    writer: masters.writer === true,
+    suppliers: masters.suppliers.map((s) => ({ code: s.code, name: s.name })),
+    items: masters.items.map((i) => ({ code: i.code, desc: i.desc, depCode: i.depCode, depName: i.depName, stock: i.stock, vatClaim: i.vatClaim })),
+  };
 }
 
 // Stored at upload, before the reader runs, so a bill can still be typed by hand
@@ -74,6 +104,24 @@ export async function storeBillPhoto(image: Buffer) {
     .toBuffer();
   const { url } = await put(`fuel-bills/${new Date().toISOString().slice(0, 7)}/${randomUUID()}.jpg`, buf);
   return { buf, url };
+}
+
+// The odometer / hour-meter photo taken at the fill: stored like the bill photo
+// (its own folder), then read by the same AI. Throws when not an image.
+export async function storeOdometerPhoto(image: Buffer) {
+  const buf = await sharp(image)
+    .rotate()
+    .resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+  const { url } = await put(`fuel-odometer/${new Date().toISOString().slice(0, 7)}/${randomUUID()}.jpg`, buf);
+  return { buf, url };
+}
+
+// Throws when the reader fails; the caller turns that into a message.
+export async function readOdometer(buf: Buffer) {
+  const o = await extractOdometer(buf, "image/jpeg");
+  return { isMeter: o.is_meter, reading: o.reading && o.reading > 0 ? o.reading : 0, unit: o.unit ?? "" };
 }
 
 // Mileage the next fill-up starts from: the latest fill of that vehicle on or
@@ -108,9 +156,12 @@ export async function readBill(buf: Buffer) {
   const plate = (b.plate ?? "").replace(/[,，;:✓✔]+/g, " ").trim();
   const { match } = await loadMatcher();
   const vehicleId = plate ? match(plate) : null;
+  const [remembered, masters] = await Promise.all([stationSuppliers(), getFuelMasters()]);
   return {
     isFuel: b.is_fuel_bill,
     station: b.station ?? "",
+    supplier: guessSupplier(b.station ?? "", remembered, masters),
+    price: b.price_per_liter && b.price_per_liter > 0 ? b.price_per_liter : 0,
     time: b.bill_time ?? "",
     plate,
     vehicleId,
@@ -145,12 +196,18 @@ export function parseRows(input: unknown): { rows: BillRow[] } | { error: string
       invoice: str(o.invoice, 100),
       item: str(o.item, 200) || "น้ำมัน",
       liters: numOf(o.liters),
+      price: Math.max(0, numOf(o.price)),
       amount: Math.round(numOf(o.amount) * 100) / 100,
       odoStart: numOf(o.odoStart),
       odoEnd: numOf(o.odoEnd),
       receiver: str(o.receiver, 200),
       billUrl: BILL_URL.test(str(o.billUrl, 200)) ? str(o.billUrl, 200) : "",
+      odoUrl: ODO_URL.test(str(o.odoUrl, 200)) ? str(o.odoUrl, 200) : "",
+      station: str(o.station, 200),
+      express: null,
     };
+    const ex = (o.express ?? null) as Record<string, unknown> | null;
+    if (ex && typeof ex === "object") row.express = { supplier: str(ex.supplier, 10), item: str(ex.item, 20) };
     if (!row.vehicleId) return { error: `${n}: ต้องเลือกรถ` };
     if (row.amount <= 0) return { error: `${n}: ต้องกรอกจำนวนเงิน` };
     if (row.liters < 0 || row.odoStart < 0 || row.odoEnd < 0) return { error: `${n}: ตัวเลขติดลบไม่ได้` };
@@ -164,10 +221,21 @@ export async function commitBills(rows: BillRow[], username: string) {
   const bad = rows.find((r) => !valid.has(r.vehicleId));
   if (bad) return { error: `บิลที่ ${bad.no}: ไม่พบรถที่เลือก` };
 
-  return prisma.$transaction(async (tx) => {
+  // Bills to book in Express: every choice is checked before anything is saved.
+  const masters = rows.some((r) => r.express) ? await getFuelMasters() : null;
+  const orders = new Map<number, Extract<ReturnType<typeof checkExpressPick>, { order: unknown }>["order"]>();
+  for (const r of rows) {
+    if (!r.express) continue;
+    const c = checkExpressPick(r.express, r, masters);
+    if ("error" in c) return { error: `บิลที่ ${r.no}: ${c.error}` };
+    orders.set(r.no, c.order);
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
     let created = 0;
     let createdSum = 0;
     let dup = 0;
+    let queued = 0;
     const seen = new Set<string>();
     for (const r of rows) {
       const k = fuelKey(r.vehicleId, r);
@@ -182,7 +250,7 @@ export async function commitBills(rows: BillRow[], username: string) {
       }
       seen.add(k);
       if (r.invoice) seen.add(inv);
-      await tx.gasolineCost.create({
+      const g = await tx.gasolineCost.create({
         data: {
           VehicleId: r.vehicleId,
           Status: "active",
@@ -196,6 +264,7 @@ export async function commitBills(rows: BillRow[], username: string) {
           Distance: r.odoStart > 0 && r.odoEnd > r.odoStart ? Math.round((r.odoEnd - r.odoStart) * 100) / 100 : null,
           ReceiverName: r.receiver || null,
           BillUrl: r.billUrl || null,
+          OdometerUrl: r.odoUrl || null,
           ImportKey: k,
           CreatedByUsername: username,
           UpdatedByUsername: username,
@@ -203,6 +272,13 @@ export async function commitBills(rows: BillRow[], username: string) {
       });
       created++;
       createdSum += r.amount;
+      const o = orders.get(r.no);
+      if (o) {
+        await queueOrder(tx, { GasolineCostId: g.GasolineCostId, date: r.date, liters: r.liters, amount: r.amount }, o, username);
+        // Remember the vehicle's Express item for the next bills.
+        await tx.vehicle.update({ where: { VehicleId: r.vehicleId }, data: { ExpressItemCode: o.item.code, ExpressDepCode: o.dep } });
+        queued++;
+      }
       if (r.plate && match(r.plate) !== r.vehicleId) await rememberAlias(tx, r.plate, r.vehicleId, username);
     }
     await tx.importLog.create({
@@ -217,6 +293,8 @@ export async function commitBills(rows: BillRow[], username: string) {
         CreatedByUsername: username,
       },
     });
-    return { created, dup };
+    return { created, dup, queued };
   });
+  await rememberStations(rows.filter((r) => r.express && r.station).map((r) => ({ station: r.station, supplier: r.express!.supplier })));
+  return result;
 }
