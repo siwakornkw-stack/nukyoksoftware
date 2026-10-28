@@ -54,7 +54,7 @@ interface Bill {
   odoPhoto: string; // object URL of the odometer photo
   odoUrl: string; // the stored odometer photo
   odoState: "" | "reading" | "ok" | "error";
-  odoNote: string; // what the reader made of the odometer photo
+  odoNote: string; // upload outcome of the odometer photo
   include: boolean;
   isFuel: boolean;
   station: string;
@@ -77,9 +77,19 @@ interface Bill {
 
 type Editable = "vehicleId" | "date" | "invoice" | "item" | "liters" | "price" | "amount" | "odoStart" | "odoEnd" | "receiver";
 
-const ORDER_LABEL: Record<string, string> = { queued: "กำลังเปิดใน Express", done: "เปิดแล้ว", error: "ไม่สำเร็จ", cancelled: "ยกเลิก" };
+// As ORDER_STATUS_LABEL in src/lib/fleet/express-fuel.ts (a server module).
+const ORDER_LABEL: Record<string, string> = {
+  queued: "กำลังเปิด PK",
+  pk: "เปิด PK แล้ว รออนุมัติ",
+  h3: "อนุมัติแล้ว กำลังเปิด H3",
+  done: "เปิดครบแล้ว",
+  error: "ไม่สำเร็จ",
+  cancelled: "ยกเลิก",
+};
 const ORDER_STYLE: Record<string, string> = {
   queued: "text-sky-300",
+  pk: "text-amber-300",
+  h3: "text-sky-300",
   done: "text-emerald-300",
   error: "text-rose-300",
   cancelled: "text-slate-400",
@@ -160,7 +170,7 @@ export function BillImport() {
     });
   }
 
-  // Odometer / hour-meter photo for one bill: stored, then read into "เลขไมล์สิ้นสุด".
+  // Odometer / hour-meter photo for one bill: stored as a supporting picture (not read).
   async function readOdo(key: number, file: File) {
     const url = URL.createObjectURL(file);
     setBills((cur) =>
@@ -176,20 +186,7 @@ export function BillImport() {
     const res = await fetch("/api/fleet/fuel-bills", { method: "POST", body: fd }).catch(() => null);
     const d = res ? await res.json().catch(() => ({})) : {};
     if (!res?.ok) return patch(key, { odoState: "error", odoNote: d.error || "อัปโหลดรูปไม่สำเร็จ" });
-    setBills((cur) =>
-      cur.map((b) => {
-        if (b.key !== key) return b;
-        const reading = Number(d.reading) || 0;
-        const note = d.readError
-          ? d.readError
-          : !d.isMeter
-            ? "รูปนี้อาจไม่ใช่หน้าปัดเลขไมล์ ตรวจก่อนบันทึก"
-            : reading
-              ? `อ่านได้ ${reading.toLocaleString("th-TH")} ${d.unit === "hours" ? "ชั่วโมง" : "กม."} ใส่ในเลขไมล์สิ้นสุดแล้ว`
-              : "อ่านเลขไมล์ไม่ออก กรอกเองจากรูป";
-        return { ...b, odoUrl: d.odoUrl ?? "", odoState: "ok", odoNote: note, odoEnd: reading ? String(reading) : b.odoEnd };
-      })
-    );
+    patch(key, { odoUrl: d.odoUrl ?? "", odoState: "ok", odoNote: "แนบรูปเลขไมล์แล้ว" });
   }
 
   // The vehicle or the date changed: look up where that vehicle's previous fill ended.
@@ -351,7 +348,7 @@ export function BillImport() {
       <Card>
         <ul className="list-disc pl-5 space-y-1 text-sm text-slate-400 mb-3">
           <li>เลือกรูปบิลได้หลายใบพร้อมกัน ระบบอ่านวันที่ เลขที่ใบกำกับ ทะเบียนรถ ลิตร และยอดเงินให้</li>
-          <li>ถ่ายรูปเลขไมล์ (หรือชั่วโมงเครื่องจักร) แนบกับแต่ละบิลได้ ระบบอ่านเลขไมล์ใส่ให้</li>
+          <li>แนบรูปเลขไมล์ (หรือชั่วโมงเครื่องจักร) ประกอบแต่ละบิลได้ กรอกเลขไมล์เองจากรูป</li>
           <li>ตรวจกับรูปทุกใบก่อนบันทึก แก้ช่องที่อ่านผิดได้ ถ้าทะเบียนในบิลจับคู่รถไม่ได้ ให้เลือกรถเอง (ครั้งต่อไประบบจะจำให้)</li>
           <li>บิลที่มีอยู่แล้ว (เลขที่ใบกำกับซ้ำ) จะไม่ถูกติ๊กไว้ และไม่บันทึกซ้ำ ไฟล์ Excel ประจำเดือนที่นำเข้าทีหลังก็จะข้ามบิลเหล่านี้</li>
         </ul>
@@ -372,21 +369,21 @@ export function BillImport() {
         </label>
         <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900/40 p-3 text-sm">
           {express && !express.writer ? (
-            <div className="text-xs text-slate-500">สั่งเปิด PK + H3 ใน Express: ยังไม่เปิดใช้ (บันทึกบิลได้ตามปกติ แล้วคีย์ใน Express เอง)</div>
+            <div className="text-xs text-slate-500">สั่งเปิด PK ใน Express: ยังไม่เปิดใช้ (บันทึกบิลได้ตามปกติ แล้วคีย์ใน Express เอง)</div>
           ) : express ? (
             <>
               <label className="flex items-center gap-2 font-medium">
                 <input type="checkbox" checked={toExpress} onChange={(e) => setToExpress(e.target.checked)} />
-                สั่งเปิด PK + H3 ใน Express ให้บิลที่บันทึก
+                สั่งเปิด PK ใน Express ให้บิลที่บันทึก
               </label>
               <div className="mt-1 text-xs text-slate-400">
-                ระบบเปิดใบสั่งซื้อน้ำมัน (PK) และ H3 (ซื้อสดด้วยบัตร ลงภาษีซื้อ) ใน Express ให้ภายใน 1-2 นาที แล้ว admin อนุมัติ PK ที่เมนู
-                ใบสั่งซื้อน้ำมันใหม่ (PK) เพื่อสร้าง R3 · <b className="text-amber-300">ตรวจเลขที่ใบกำกับภาษีให้ตรงกับบิล</b> เพราะเข้ารายงานภาษีซื้อ ·
-                บิลที่สั่งเปิดแล้ว อย่าคีย์ซ้ำใน Express
+                ระบบเปิดใบสั่งซื้อน้ำมัน (PK) ใน Express ให้ภายใน 1-2 นาที แล้ว admin อนุมัติ PK ที่เมนู ใบสั่งซื้อน้ำมันใหม่ (PK)
+                ระบบจะเปิด H3 (ซื้อสดด้วยบัตร ลงภาษีซื้อ) และเพิ่มเข้า R3 ของวันที่บิลให้ · <b className="text-amber-300">ตรวจเลขที่ใบกำกับภาษีให้ตรงกับบิล</b>{" "}
+                เพราะเข้ารายงานภาษีซื้อ · บิลที่สั่งเปิดแล้ว อย่าคีย์ซ้ำใน Express
               </div>
             </>
           ) : (
-            <div className="text-xs text-slate-500">สั่งเปิด PK + H3 ใน Express: ยังไม่มีข้อมูลจาก Express (รอเครื่องที่มี Express ส่งข้อมูลมา)</div>
+            <div className="text-xs text-slate-500">สั่งเปิด PK ใน Express: ยังไม่มีข้อมูลจาก Express (รอเครื่องที่มี Express ส่งข้อมูลมา)</div>
           )}
         </div>
         {error && <div className="mt-3 text-sm text-rose-400">{error}</div>}
@@ -451,7 +448,7 @@ export function BillImport() {
                       <img src={b.odoPhoto} alt="เลขไมล์" className="h-full w-full object-contain" />
                     </a>
                     <div className={`text-xs ${b.odoState === "error" ? "text-rose-400" : "text-slate-400"}`}>
-                      {b.odoState === "reading" ? "กำลังอ่านเลขไมล์..." : b.odoNote}
+                      {b.odoState === "reading" ? "กำลังอัปโหลด..." : b.odoNote}
                     </div>
                   </div>
                 )}

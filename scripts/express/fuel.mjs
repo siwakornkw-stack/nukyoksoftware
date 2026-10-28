@@ -1,7 +1,8 @@
 // Plans the PK (ใบสั่งซื้อ-น้ำมัน(ใหม่)) and the H3 (ซื้อสดด้วยบัตร) Express needs
 // for one fuel bill saved on the web, the way staff key them (every PP since
 // July 2026 is one bill, one line, VAT included; it is received by an H3 with
-// the tax invoice in "เลขที่บิล"):
+// the tax invoice in "เลขที่บิล"). The PK is written when the bill is saved, the
+// H3 once an admin approved the PK (stage "pk" / "h3"):
 //   PK  POPR + POPRIT, number from ISRUN (PK0000001…), STMAS TOTREO += litres
 //   H3  APTRN (number H3<BEyymmdd>-NN like staff use), STCRD line linked to the
 //       PK line, journal 03 Dr 5110-04 (dep) / Dr 1164-01 VAT (dep) / Cr 2120-03,
@@ -29,8 +30,22 @@ export function lineAmounts(liters, price, total) {
   return { price: p, disc, total: r2(total), vat, net, xunit: r2(net / liters) };
 }
 
-// order: { id, withH3, supplier, item, dep, date, invoice, liters, price, amount }
-export function planFuel(order, { popr, poprit, stmas, apmas, aptrn, isprd, isrun }, user = "WEB") {
+// order: { id, stage, pkNo, withH3, supplier, item, dep, date, invoice, liters, price, amount }
+// stage "pk" (when the bill is saved): the PK only. stage "h3" (once an admin
+// approved that PK, order.pkNo): its H3. An order without a stage is both at once.
+export function planFuel(order, tables, user = "WEB") {
+  if (order.stage === "pk") return planStage({ ...order, withH3: false }, tables, user, "");
+  if (order.stage === "h3") {
+    const pk = tables.popr.find((p) => p.PONUM === order.pkNo && p.DOCSTAT !== "C");
+    if (!pk) return { status: "error", reason: `ไม่พบ ${order.pkNo} ใน Express` };
+    const item = tables.stmas.find((s) => s.STKCOD === order.item);
+    if (item && item.STKTYP !== "5") return { status: "error", reason: `${order.item} เป็นสินค้าคงคลัง H3 ต้องคีย์ใน Express เอง` };
+    return planStage({ ...order, withH3: true }, tables, user, pk.PONUM);
+  }
+  return planStage(order, tables, user, "");
+}
+
+function planStage(order, { popr, poprit, stmas, apmas, aptrn, isprd, isrun }, user, knownPk) {
   const sup = apmas.find((s) => s.SUPCOD === order.supplier);
   if (!sup) return { status: "error", reason: `ไม่พบผู้จำหน่าย ${order.supplier} ใน Express` };
   const item = stmas.find((s) => s.STKCOD === order.item);
@@ -47,10 +62,10 @@ export function planFuel(order, { popr, poprit, stmas, apmas, aptrn, isprd, isru
   const h3 = aptrn.find(
     (r) => r.DOCNUM.startsWith("H3") && r.REFNUM === order.invoice && r.DOCSTAT !== "C" && (r.SUPCOD === order.supplier || r2(r.NETAMT) === r2(order.amount))
   );
-  if (h3) return { status: "exists", pkNo: h3.PONUM || "", h3No: h3.DOCNUM };
-  const pk = popr.find(
-    (p) => p.PONUM.startsWith("PK") && p.SUPCOD === order.supplier && p.PODAT === order.date && p.YOUREF === order.invoice && p.DOCSTAT !== "C"
-  );
+  if (h3) return { status: "exists", pkNo: h3.PONUM || knownPk, h3No: h3.DOCNUM };
+  const pk = knownPk
+    ? { PONUM: knownPk }
+    : popr.find((p) => p.PONUM.startsWith("PK") && p.SUPCOD === order.supplier && p.PODAT === order.date && p.YOUREF === order.invoice && p.DOCSTAT !== "C");
   const withH3 = order.withH3 && item.STKTYP === "5";
   if (pk && !withH3) return { status: "exists", pkNo: pk.PONUM, h3No: "" };
 

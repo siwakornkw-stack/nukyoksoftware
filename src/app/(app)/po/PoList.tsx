@@ -6,8 +6,8 @@ import { PageHeader, Card } from "@/components/ui";
 import { baht, thDate } from "@/lib/format";
 import { dec } from "@/lib/fleet/queries";
 import { getSession, isAdmin } from "@/lib/auth";
-import { approvalWhere, bkkDateTime, effectiveApproval, getSyncInfo, pzWaitingWhere, r3State, r3WaitingWhere } from "@/lib/po/purchase-orders";
-import { ApprovalBadge, DocStatBadge, PzBadge, R3Badge } from "./badges";
+import { approvalWhere, bkkDateTime, effectiveApproval, getSyncInfo, r3State, r3WaitingWhere } from "@/lib/po/purchase-orders";
+import { ApprovalBadge, DocStatBadge, R3Badge } from "./badges";
 import { QuickApprove } from "./QuickApprove";
 
 export type SP = { q?: string; ap?: string; ex?: string; from?: string; to?: string; page?: string };
@@ -18,9 +18,8 @@ const AP_TABS = [
   { key: "rejected", label: "ไม่อนุมัติ" },
   { key: "all", label: "ทั้งหมด" },
 ];
-// PK: approved but no R3 (ตั้งหนี้บัตรเครดิต) opened in Express yet, and R3s
-// not paid back yet (no transfer slip / PZ).
-const PK_TABS = [AP_TABS[0], AP_TABS[1], { key: "r3wait", label: "รอ R3" }, { key: "paywait", label: "รอจ่ายคืน" }, AP_TABS[2], AP_TABS[3]];
+// PK: approved but no R3 (ตั้งหนี้บัตรเครดิต) opened in Express yet.
+const PK_TABS = [AP_TABS[0], AP_TABS[1], { key: "r3wait", label: "รอ R3" }, AP_TABS[2], AP_TABS[3]];
 const EX_OPTS = [
   { key: "", label: "ทุกสถานะ Express" },
   { key: "N", label: "ค้างรับ" },
@@ -58,7 +57,7 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
   // AND, not a spread: both sides may filter DocStat (the tab and the Express
   // status filter), and a spread let the tab's condition replace the filter.
   const tabWhere = (k: string): Prisma.PurchaseOrderWhereInput => ({
-    AND: [base, k === "r3wait" ? r3WaitingWhere : k === "paywait" ? pzWaitingWhere : approvalWhere(k)],
+    AND: [base, k === "r3wait" ? r3WaitingWhere : approvalWhere(k)],
   });
   const where = tabWhere(ap);
 
@@ -70,7 +69,7 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
       take: PAGE,
       select: {
         PoNo: true, PoDate: true, SupplierName: true, DepName: true, NetAmt: true, DocStat: true, MissingInExpress: true, ApprovalStatus: true,
-        ApprovedBy: true, ContentHash: true, R3DocNo: true, R3Status: true, R3Error: true, Payment: { select: { Status: true, PzNo: true } },
+        ApprovedBy: true, ContentHash: true, R3DocNo: true, R3Status: true, R3Error: true,
       },
     }),
     prisma.purchaseOrder.count({ where }),
@@ -95,7 +94,7 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
         subtitle={
           sync
             ? `ดึงจาก Express ล่าสุด ${bkkDateTime(sync.at)} · ${sync.count.toLocaleString("th-TH")} ใบ` +
-              (book === "pk" ? " · อนุมัติแล้วระบบสร้าง R3 ใน Express ให้" : " · ดูอย่างเดียว ไม่แก้ไขข้อมูลใน Express")
+              (book === "pk" ? " · อนุมัติแล้วระบบเปิด H3 และเพิ่มเข้า R3 ของวันที่บิลให้" : " · ดูอย่างเดียว ไม่แก้ไขข้อมูลใน Express")
             : "ยังไม่เคยดึงข้อมูลจาก Express (รัน scripts/express-po-sync.mjs บนเครื่องที่มี Express)"
         }
       />
@@ -179,7 +178,6 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
                           {book === "pk" && (
                             <div className="mt-1 flex flex-wrap gap-1">
                               <R3Badge r3={r3State(r)} />
-                              <PzBadge pay={r.Payment} />
                             </div>
                           )}
                         </>

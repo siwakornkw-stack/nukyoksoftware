@@ -10,7 +10,7 @@ import { normalizeDate } from "./dates";
 import { plateText } from "./plates";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
-import { extractBill, extractOdometer } from "@/lib/fuel/extract";
+import { extractBill } from "@/lib/fuel/extract";
 import { put } from "@/lib/storage";
 import { fuelKey, loadMatcher, rememberAlias } from "./office-import";
 import { checkExpressPick, getFuelMasters, guessSupplier, queueOrder, rememberStations, stationSuppliers, suggestItem, type ExpressPick } from "./express-fuel";
@@ -107,7 +107,7 @@ export async function storeBillPhoto(image: Buffer) {
 }
 
 // The odometer / hour-meter photo taken at the fill: stored like the bill photo
-// (its own folder), then read by the same AI. Throws when not an image.
+// (its own folder) as a supporting picture; nothing reads it. Throws when not an image.
 export async function storeOdometerPhoto(image: Buffer) {
   const buf = await sharp(image)
     .rotate()
@@ -116,12 +116,6 @@ export async function storeOdometerPhoto(image: Buffer) {
     .toBuffer();
   const { url } = await put(`fuel-odometer/${new Date().toISOString().slice(0, 7)}/${randomUUID()}.jpg`, buf);
   return { buf, url };
-}
-
-// Throws when the reader fails; the caller turns that into a message.
-export async function readOdometer(buf: Buffer) {
-  const o = await extractOdometer(buf, "image/jpeg");
-  return { isMeter: o.is_meter, reading: o.reading && o.reading > 0 ? o.reading : 0, unit: o.unit ?? "" };
 }
 
 // Mileage the next fill-up starts from: the latest fill of that vehicle on or

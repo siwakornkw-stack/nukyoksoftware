@@ -92,6 +92,18 @@ describe("fuel PK + H3 plan", () => {
     expect(planFuel(order({ liters: 30.51, amount: 1005.1 }), tables()).status).toBe("ready"); // rounding of the litres is fine
   });
 
+  it("writes the PK when the bill is saved and the H3 once that PK is approved", () => {
+    expect(planFuel(order({ stage: "pk" }), tables())).toMatchObject({ status: "ready", pkNo: "", withH3: false, accounts: null, hpColumn: "" });
+    expect(planFuel(order({ stage: "pk", date: "2026-10-27", invoice: "26102700000001" }), tables())).toEqual({ status: "exists", pkNo: "PK0000001", h3No: "" });
+    expect(planFuel(order({ stage: "h3", pkNo: "PK0000001" }), tables())).toMatchObject({
+      status: "ready", pkNo: "PK0000001", withH3: true, h3Prefix: "H3691028-", accounts: { expense: "5110-04", vat: "1164-01", pay: "2120-03" }, hpColumn: "HP1NY",
+    });
+    // staff keyed the H3 meanwhile: nothing more to write
+    expect(planFuel(order({ stage: "h3", pkNo: "PK0000001", invoice: "26101300000009", amount: 1500.5, price: 0 }), tables())).toMatchObject({ status: "exists", h3No: "H3691013-01" });
+    expect(planFuel(order({ stage: "h3", pkNo: "PK0000099" }), tables()).reason).toMatch(/ไม่พบ PK0000099/);
+    expect(planFuel(order({ stage: "h3", pkNo: "PK0000001", item: "140 SY" }), tables()).reason).toMatch(/สินค้าคงคลัง/);
+  });
+
   it("adds only the H3 to a PK already opened for the bill", () => {
     const p = planFuel(order({ date: "2026-10-27", invoice: "26102700000001" }), tables());
     expect(p).toMatchObject({ status: "ready", pkNo: "PK0000001", withH3: true });
@@ -180,9 +192,6 @@ describe("fuel bills -> Express choices", () => {
   const masters: FuelMasters = {
     at: "",
     writer: true,
-    banks: [],
-    creditor: null,
-    pzWriter: false,
     suppliers: [{ code: "บ015", name: "บางจากกรีนเนท", taxId: "", branch: "", uses: 9, last: "" }],
     items: [item("70-1826", "ค่าน้ำมันรถ 70-1826"), item("3297 (ก)", "ค่าน้ำมันรถกระบะ ก-3297 วีโก้"), item("SY200", "ค่าน้ำมัน SY200H")],
   };

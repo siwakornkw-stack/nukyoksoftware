@@ -9,19 +9,22 @@ import { saveFuelMasters } from "@/lib/fleet/express-fuel";
 export const dynamic = "force-dynamic";
 
 // The office PC's side of booking fuel bills in Express (Bearer EXPRESS_SYNC_SECRET).
-//   GET  -> {"orders":[...]}  bills queued for a PK (+ H3) in Express
-//   POST {"masters":{suppliers, items}}   fuel master data read from Express
+//   GET  -> {"orders":[...]}  bills whose PK (stage "pk") or, once the PK is
+//           approved, whose H3 (stage "h3", with its pkNo) is to be written
+//   POST {"masters":{suppliers, items, writer}}   fuel master data read from Express
 //   POST {"results":[{"id","status":"done"|"busy"|"error","pkNo"?,"h3No"?,"error"?}]}
 export async function GET(req: Request) {
   if (!bearerOk(req, process.env.EXPRESS_SYNC_SECRET)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const rows = await prisma.expressFuelOrder.findMany({
-    where: { TenantId: DEFAULT_TENANT_ID, Status: "queued" },
+    where: { TenantId: DEFAULT_TENANT_ID, Status: { in: ["queued", "h3"] } },
     orderBy: { CreatedAt: "asc" },
     take: 10, // a few seconds each; the rest go next minute, well inside the task's 5-minute limit
   });
   return NextResponse.json({
     orders: rows.map((r) => ({
       id: r.ExpressFuelOrderId,
+      stage: r.Status === "h3" ? "h3" : "pk",
+      pkNo: r.PkNo ?? "",
       withH3: r.WithH3,
       supplier: r.SupplierCode,
       item: r.ItemCode,
@@ -50,16 +53,25 @@ export async function POST(req: Request) {
     const r = (raw ?? {}) as Record<string, unknown>;
     const id = str(r.id, 36), status = str(r.status, 10);
     if (!id || !STATUSES.includes(status)) continue;
-    const row = await prisma.expressFuelOrder.findFirst({ where: { ExpressFuelOrderId: id, TenantId: DEFAULT_TENANT_ID, Status: "queued" } });
+    const row = await prisma.expressFuelOrder.findFirst({ where: { ExpressFuelOrderId: id, TenantId: DEFAULT_TENANT_ID, Status: { in: ["queued", "h3"] } } });
     if (!row) continue;
     if (status === "done") {
-      const data = { Status: "done", PkNo: str(r.pkNo, 12) || null, H3No: str(r.h3No, 12) || null, Error: str(r.error) || null };
+      const pkNo = str(r.pkNo, 12) || row.PkNo, h3No = str(r.h3No, 12) || null;
+      // The PK stage ends at "pk" (waiting for approval) unless the bill needs no
+      // H3 from us, or Express already had one for this invoice.
+      const next = row.Status === "queued" && row.WithH3 && !h3No ? "pk" : "done";
+      const data = { Status: next, PkNo: pkNo || null, H3No: h3No ?? row.H3No, Error: str(r.error) || null };
       await prisma.expressFuelOrder.update({ where: { ExpressFuelOrderId: id }, data });
       await audit("ExpressFuelOrder", id, "express-written", "express-fuel", { Status: row.Status }, data);
+      // Approved already (the PK was approved before this answer came back): on to the H3.
+      if (next === "pk" && pkNo) {
+        const po = await prisma.purchaseOrder.findUnique({ where: { TenantId_PoNo: { TenantId: DEFAULT_TENANT_ID, PoNo: pkNo } }, select: { ApprovalStatus: true } });
+        if (po?.ApprovalStatus === "approved") await prisma.expressFuelOrder.update({ where: { ExpressFuelOrderId: id }, data: { Status: "h3" } });
+      }
     } else if (status === "error") {
       const error = str(r.error) || "เปิดใน Express ไม่สำเร็จ";
       await prisma.expressFuelOrder.update({ where: { ExpressFuelOrderId: id }, data: { Status: "error", Error: error } });
-      await opsAlert(`express-fuel|${id}`, "เปิด PK/H3 ของบิลน้ำมันใน Express ไม่สำเร็จ", `${row.Invoice}: ${error}`);
+      await opsAlert(`express-fuel|${id}`, `เปิด ${row.Status === "h3" ? "H3" : "PK"} ของบิลน้ำมันใน Express ไม่สำเร็จ`, `${row.PkNo ?? row.Invoice}: ${error}`);
     }
     // busy: someone was editing a row the write needs in Express; stays queued.
     applied++;

@@ -6,6 +6,7 @@ import { getRecordType } from "@/lib/fleet/record-types";
 import { delegate } from "@/lib/fleet/record-delegates";
 import { parseScalar } from "@/lib/fleet/record-fields";
 import { audit } from "@/lib/audit";
+import { ORDER_BUSY } from "@/lib/fleet/express-fuel";
 
 export const dynamic = "force-dynamic";
 
@@ -33,11 +34,11 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ type: strin
   // those documents without their bill. One being written right now waits.
   if (def.key === "gasoline") {
     const order = await prisma.expressFuelOrder.findUnique({ where: { GasolineCostId: id } });
-    if (order?.Status === "done") {
+    if (order && ORDER_BUSY.includes(order.Status)) return NextResponse.json({ error: "บิลนี้กำลังเปิดใน Express รอสักครู่แล้วลองใหม่" }, { status: 400 });
+    if (order?.PkNo) {
       const docs = [order.PkNo, order.H3No].filter(Boolean).join(" / ");
       return NextResponse.json({ error: `บิลนี้เปิดใน Express แล้ว (${docs}) ลบไม่ได้ ต้องจัดการใน Express ก่อน` }, { status: 400 });
     }
-    if (order?.Status === "queued") return NextResponse.json({ error: "บิลนี้กำลังเปิดใน Express รอสักครู่แล้วลองใหม่" }, { status: 400 });
     if (order) await prisma.expressFuelOrder.delete({ where: { ExpressFuelOrderId: order.ExpressFuelOrderId } });
   }
 
@@ -100,10 +101,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ type: string;
   // Express to match) may change them.
   if (def.key === "gasoline") {
     const order = await prisma.expressFuelOrder.findUnique({ where: { GasolineCostId: id }, select: { Status: true, PkNo: true, H3No: true } });
-    if (order?.Status === "queued" || order?.Status === "done") {
+    const busy = !!order && ORDER_BUSY.includes(order.Status);
+    if (order && (busy || order.PkNo)) {
       const key = (k: string, v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : k === "Liters" || k === "Amount" ? String(Number(v)) : String(v ?? "").trim());
       const changed = ["VehicleId", "DateTime", "TaxInvoiceNumber", "Liters", "Amount"].filter((k) => k in data && key(k, data[k]) !== key(k, row[k]));
-      if (changed.length && order.Status === "queued") return NextResponse.json({ error: "บิลนี้กำลังเปิดใน Express รอสักครู่แล้วลองใหม่" }, { status: 400 });
+      if (changed.length && busy) return NextResponse.json({ error: "บิลนี้กำลังเปิดใน Express รอสักครู่แล้วลองใหม่" }, { status: 400 });
       if (changed.length && !isAdmin(session)) {
         const docs = [order.PkNo, order.H3No].filter(Boolean).join(" / ");
         return NextResponse.json({ error: `บิลนี้เปิดใน Express แล้ว (${docs}) วันที่ เลขที่ใบกำกับ ลิตร ยอดเงิน และรถ แก้ได้เฉพาะผู้ดูแลระบบ (ต้องแก้ใน Express ให้ตรงกันด้วย)` }, { status: 400 });

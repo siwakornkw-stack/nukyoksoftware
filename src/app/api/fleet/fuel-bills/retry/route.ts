@@ -17,8 +17,14 @@ export async function POST(req: Request) {
   const id = typeof b.id === "string" ? b.id.trim().slice(0, 36) : "";
   const row = id ? await prisma.expressFuelOrder.findFirst({ where: { ExpressFuelOrderId: id, TenantId: DEFAULT_TENANT_ID } }) : null;
   if (!row) return NextResponse.json({ error: "ไม่พบรายการ" }, { status: 404 });
-  const { count } = await prisma.expressFuelOrder.updateMany({ where: { ExpressFuelOrderId: id, Status: "error" }, data: { Status: "queued", Error: null } });
+  // The stage that failed: no PK yet -> the PK; else the H3, if the PK is (still) approved.
+  let next = "queued";
+  if (row.PkNo) {
+    const po = await prisma.purchaseOrder.findUnique({ where: { TenantId_PoNo: { TenantId: DEFAULT_TENANT_ID, PoNo: row.PkNo } }, select: { ApprovalStatus: true } });
+    next = po?.ApprovalStatus === "approved" ? "h3" : "pk";
+  }
+  const { count } = await prisma.expressFuelOrder.updateMany({ where: { ExpressFuelOrderId: id, Status: "error" }, data: { Status: next, Error: null } });
   if (!count) return NextResponse.json({ error: "รายการนี้ไม่ได้อยู่ในสถานะไม่สำเร็จ" }, { status: 400 });
-  await audit("ExpressFuelOrder", id, "retry", s.username, { Status: row.Status, Error: row.Error }, { Status: "queued" });
+  await audit("ExpressFuelOrder", id, "retry", s.username, { Status: row.Status, Error: row.Error }, { Status: next });
   return NextResponse.json({ ok: true });
 }

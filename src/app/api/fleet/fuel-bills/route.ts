@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession, isAdmin } from "@/lib/auth";
 import { readError } from "@/lib/fuel/read-error";
-import { commitBills, expressChoices, lastOdo, parseRows, readBill, readOdometer, storeBillPhoto, storeOdometerPhoto, vehicleList } from "@/lib/fleet/fuel-bills";
+import { commitBills, expressChoices, lastOdo, parseRows, readBill, storeBillPhoto, storeOdometerPhoto, vehicleList } from "@/lib/fleet/fuel-bills";
 import { recentOrders } from "@/lib/fleet/express-fuel";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
 }
 
 // multipart file=<one bill photo>: store the photo and read it. No fuel row is saved.
-// multipart file=<odometer photo> + kind=odometer: store it and read the mileage.
+// multipart file=<odometer photo> + kind=odometer: store it (a supporting picture, not read).
 // JSON { rows: [...] }: save the checked rows (and queue the Express ones).
 export async function POST(req: Request) {
   const s = await getSession();
@@ -54,13 +54,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "เปิดไฟล์รูปไม่ได้ ใช้รูป JPG หรือ PNG" }, { status: 400 });
   }
 
-  if (odometer) {
-    try {
-      return NextResponse.json({ odoUrl: photo.url, readError: null, ...(await readOdometer(photo.buf)) });
-    } catch (e) {
-      return NextResponse.json({ odoUrl: photo.url, readError: await readError(e) });
-    }
-  }
+  if (odometer) return NextResponse.json({ odoUrl: photo.url });
   try {
     return NextResponse.json({ billUrl: photo.url, readError: null, ...(await readBill(photo.buf)) });
   } catch (e) {

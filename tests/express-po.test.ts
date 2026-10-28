@@ -104,6 +104,25 @@ describe("purchase orders", () => {
     expect(firstR3(poSchema.parse({ ...po, receipts: undefined }))).toBeNull(); // data synced before receipts existed
   });
 
+  it("finds a PO's part of the day's R3 through the H3 named at the end of its lines", () => {
+    const aptrn = [
+      { PONUM: "PO1", DOCNUM: "H3691013-04", DOCDAT: "2026-10-13", NETAMT: 1004.67, DOCSTAT: "N", REFNUM: "" },
+      { PONUM: "", DOCNUM: "R3691013-01", DOCDAT: "2026-10-13", NETAMT: 29524.67, DOCSTAT: "N", REFNUM: "" },
+    ];
+    const stcrd = [
+      { DOCNUM: "R3691013-01", STKDES: "81-2458", TRNVAL: 3000 },
+      { DOCNUM: "R3691013-01", STKDES: "81-1477 /H3691013-04", TRNVAL: 1004.67 },
+      { DOCNUM: "H3691013-04", STKDES: "ค่าน้ำมัน", TRNVAL: 1004.67 },
+    ];
+    const [po] = buildPurchaseOrders({ ...tables, aptrn, stcrd });
+    const parsed = poSchema.parse(po);
+    expect(parsed.receipts).toEqual([
+      { docNo: "H3691013-04", date: "2026-10-13", netAmt: 1004.67, docStat: "N" },
+      { docNo: "R3691013-01", date: "2026-10-13", netAmt: 1004.67, docStat: "N" }, // its own line, not the whole R3
+    ]);
+    expect(firstR3(parsed)).toBe("R3691013-01");
+  });
+
   it("asks for an R3 only on approved PK orders", () => {
     expect(r3State({ PoNo: "PK0000001", ApprovalStatus: "approved", R3DocNo: null })).toEqual({ state: "queued" });
     expect(r3State({ PoNo: "PK0000001", ApprovalStatus: null, R3DocNo: null })).toBeNull();

@@ -9,12 +9,14 @@ import { r3QueueWhere } from "@/lib/po/purchase-orders";
 export const dynamic = "force-dynamic";
 
 // The office PC's R3 queue (Bearer EXPRESS_SYNC_SECRET, like /api/cron/express-po).
-//   GET  -> {"pk": ["PK0000001", ...]}  approved PKs whose R3 it should write now
+//   GET  -> {"pk": ["PK0000001", ...], "force": [...]}  approved PKs whose H3 it should
+//           add to the R3 of the bill date now; "force": an admin confirmed that a
+//           same-amount line already in that R3 is another bill
 //   POST {"results":[{"pk","status":"done"|"waiting"|"busy"|"error","docNo"?,"error"?}]}
 export async function GET(req: Request) {
   if (!bearerOk(req, process.env.EXPRESS_SYNC_SECRET)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const rows = await prisma.purchaseOrder.findMany({ where: r3QueueWhere, select: { PoNo: true }, orderBy: { PoNo: "asc" }, take: 50 });
-  return NextResponse.json({ pk: rows.map((r) => r.PoNo) });
+  const rows = await prisma.purchaseOrder.findMany({ where: r3QueueWhere, select: { PoNo: true, R3Status: true }, orderBy: { PoNo: "asc" }, take: 50 });
+  return NextResponse.json({ pk: rows.map((r) => r.PoNo), force: rows.filter((r) => r.R3Status === "force").map((r) => r.PoNo) });
 }
 
 const STATUSES = ["done", "waiting", "busy", "error"];

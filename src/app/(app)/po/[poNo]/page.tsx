@@ -8,11 +8,9 @@ import { ApprovalBadge, DocStatBadge, R3Badge } from "../badges";
 import { CopyButton } from "../CopyButton";
 import { R3Retry } from "./R3Retry";
 import { ApprovalPanel } from "./ApprovalPanel";
-import { PayPanel } from "./PayPanel";
 import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
-import { getFuelMasters } from "@/lib/fleet/express-fuel";
-import { r3Of } from "@/lib/po/pz";
+import { ORDER_STATUS_LABEL } from "@/lib/fleet/express-fuel";
 
 export const dynamic = "force-dynamic";
 
@@ -25,20 +23,22 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   const { row, po } = found;
   const sup = po.supplier;
   const r3 = r3State(row);
-  // A PK written from a fuel bill on the web: its bill and odometer photos.
-  // Once its R3 is in Express: the transfer slip that pays it back (PZ).
-  const pk = row.PoNo.startsWith("PK");
-  const paidR3 = pk ? r3Of(row) : null;
-  const [fromBill, payment, masters] = await Promise.all([
-    pk
-      ? prisma.expressFuelOrder.findFirst({
-          where: { TenantId: DEFAULT_TENANT_ID, PkNo: row.PoNo },
-          select: { RequestedBy: true, CreatedAt: true, GasolineCost: { select: { BillUrl: true, OdometerUrl: true, OdometerStart: true, OdometerEnd: true } } },
-        })
-      : null,
-    paidR3 ? prisma.pkPayment.findUnique({ where: { PurchaseOrderId: row.PurchaseOrderId } }) : null,
-    paidR3 ? getFuelMasters() : null,
-  ]);
+  // A PK written from a fuel bill on the web: its bill and odometer photos, and
+  // where its H3 stands (written by the office PC once the PK is approved).
+  const fromBill = row.PoNo.startsWith("PK")
+    ? await prisma.expressFuelOrder.findFirst({
+        where: { TenantId: DEFAULT_TENANT_ID, PkNo: row.PoNo },
+        select: {
+          RequestedBy: true,
+          CreatedAt: true,
+          Status: true,
+          WithH3: true,
+          H3No: true,
+          Error: true,
+          GasolineCost: { select: { BillUrl: true, OdometerUrl: true, OdometerStart: true, OdometerEnd: true } },
+        },
+      })
+    : null;
 
   const info: [string, React.ReactNode][] = [
     ["วันที่", thDate(po.poDate)],
@@ -144,6 +144,12 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
       {fromBill && (
         <Card className="mb-4">
           <div className="mb-2 font-semibold">บิลน้ำมันต้นทาง</div>
+          <div className="mb-1 text-sm">
+            {ORDER_STATUS_LABEL[fromBill.Status] ?? fromBill.Status}
+            {fromBill.H3No && <span className="ml-2 text-slate-300">H3: {fromBill.H3No}</span>}
+            {!fromBill.WithH3 && <span className="ml-2 text-xs text-amber-300">รถคันนี้ H3 ต้องคีย์ใน Express เอง</span>}
+            {fromBill.Status === "error" && fromBill.Error && <div className="text-xs text-rose-300">{fromBill.Error}</div>}
+          </div>
           <div className="mb-2 text-xs text-slate-400">
             บันทึกบนเว็บโดย {fromBill.RequestedBy} · {bkkDateTime(fromBill.CreatedAt)}
             {Number(fromBill.GasolineCost.OdometerEnd) > 0 && (
@@ -188,47 +194,23 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">
               ✅ มี R3 ใน Express แล้ว: <span className="font-semibold">{r3.docNo}</span> <CopyButton value={r3.docNo} label="คัดลอกเลข R3" />
             </div>
-          ) : r3.state === "queued" ? (
+          ) : r3.state === "queued" || (r3.state === "waiting" && fromBill?.WithH3 && fromBill.Status !== "done") ? (
             <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 text-sm text-sky-300">
-              ⏳ อนุมัติแล้ว ระบบจะสร้าง R3 (ตั้งหนี้ 0009) ใน Express ให้เองภายในประมาณ 1-2 นาที จากยอด H3 ของใบนี้
+              ⏳ อนุมัติแล้ว ระบบจะ{fromBill?.WithH3 && fromBill.Status !== "done" ? "เปิด H3 ของบิลนี้ แล้ว" : ""}เพิ่มบิลนี้เข้า R3 ของวันที่บิล (ตั้งหนี้ 0009) ใน Express
+              ให้เองภายในประมาณ 1-2 นาที
             </div>
           ) : r3.state === "waiting" ? (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
-              ⏳ ยังไม่มี H3 ที่อ้างถึง {po.poNo} ใน Express: บันทึก H3 (อ้างถึงใบสั่งซื้อ = {po.poNo}) แล้วระบบจะสร้าง R3 ให้ในรอบถัดไป
+              ⏳ ยังไม่มี H3 ที่อ้างถึง {po.poNo} ใน Express: บันทึก H3 (อ้างถึงใบสั่งซื้อ = {po.poNo}) แล้วระบบจะเพิ่มเข้า R3 ของวันที่บิลให้ในรอบถัดไป
             </div>
           ) : (
             <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-sm">
               <div className="font-medium text-rose-300">⛔ สร้าง R3 ไม่สำเร็จ</div>
               <div className="mt-1 text-slate-300">{r3.error}</div>
-              {!!s && isAdmin(s) && <R3Retry poNo={po.poNo} />}
+              {!!s && isAdmin(s) && <R3Retry poNo={po.poNo} duplicate={r3.error.startsWith("อาจซ้ำ:")} />}
             </div>
           )}
         </Card>
-      )}
-
-      {paidR3 && row.ApprovalStatus === "approved" && (
-        <PayPanel
-          poNo={po.poNo}
-          r3={paidR3}
-          payment={
-            payment && {
-              status: payment.Status,
-              pzNo: payment.PzNo ?? "",
-              slipUrl: payment.SlipUrl,
-              amount: Number(payment.Amount),
-              date: payment.PayDate.toISOString().slice(0, 10),
-              payType: payment.PayType,
-              ref: payment.BankRef ?? "",
-              error: payment.Error ?? "",
-              by: payment.RequestedBy,
-              at: payment.UpdatedAt.toISOString(),
-            }
-          }
-          banks={(masters?.banks ?? []).map((b) => ({ code: b.code, name: b.name, accountName: b.accountName }))}
-          creditor={masters?.creditor?.name ?? ""}
-          canPay={!!s && isAdmin(s)}
-          writer={!!masters?.pzWriter}
-        />
       )}
 
       {po.receipts.length > 0 && (

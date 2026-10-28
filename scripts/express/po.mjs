@@ -2,25 +2,44 @@
 // Tables: POPR (header), POPRIT (lines), APMAS (suppliers), ISTAB (code
 // tables: 20 = units, 50 = departments), ISINFO (company letterhead), APTRN
 // (purchase documents: those with PONUM set were opened "อ้างถึงใบสั่งซื้อ"
-// this PO, e.g. RR ซื้อเชื่อ, R3 ตั้งหนี้บัตรเครดิต).
+// this PO, e.g. RR ซื้อเชื่อ, H3 ซื้อสดด้วยบัตร) and STCRD (the R3 lines that
+// name the H3 they were taken from).
 import { createHash } from "crypto";
 import path from "path";
 import { readDbf } from "./dbf.mjs";
+import { h3Ref } from "./r3.mjs";
 
 const round = (n, d = 2) => Math.round((Number(n) || 0) * 10 ** d) / 10 ** d;
 
 // Build every PO from already-parsed table rows (kept separate from file IO so
 // tests can feed rows directly).
-export function buildPurchaseOrders({ popr, poprit, apmas, istab, aptrn = /** @type {any[]} */ ([]) }) {
+export function buildPurchaseOrders({ popr, poprit, apmas, istab, aptrn = /** @type {any[]} */ ([]), stcrd = /** @type {any[]} */ ([]) }) {
   const receiptsOf = new Map();
-  for (const t of aptrn) {
-    // The R3 (scripts/express-r3.mjs) and the PZ paying it back
-    // (scripts/express-pz.mjs) carry the PK number in REFNUM ("เลขที่บิล")
-    // rather than PONUM.
-    const po = t.PONUM || (/^(R3|PZ)/.test(t.DOCNUM) && /^PK\d+$/.test(t.REFNUM) ? t.REFNUM : "");
-    if (!po) continue;
+  const add = (po, r) => {
     if (!receiptsOf.has(po)) receiptsOf.set(po, []);
-    receiptsOf.get(po).push({ docNo: t.DOCNUM, date: t.DOCDAT, netAmt: round(t.NETAMT), docStat: t.DOCSTAT });
+    receiptsOf.get(po).push(r);
+  };
+  const docs = new Map(aptrn.map((t) => [t.DOCNUM, t]));
+  for (const t of aptrn) {
+    // An R3 written for a single PK (until 2026-10-28) carries the PK number in
+    // REFNUM ("เลขที่บิล") rather than PONUM.
+    const po = t.PONUM || (t.DOCNUM.startsWith("R3") && /^PK\d+$/.test(t.REFNUM) ? t.REFNUM : "");
+    if (po) add(po, { docNo: t.DOCNUM, date: t.DOCDAT, netAmt: round(t.NETAMT), docStat: t.DOCSTAT });
+  }
+  // The R3 of a day carries many bills, each line ending "/<H3>", and the H3
+  // names its PO: listed with that PO's part of the R3.
+  const parts = new Map();
+  for (const s of stcrd) {
+    if (!s.DOCNUM.startsWith("R3")) continue;
+    const h3 = docs.get(h3Ref(s.STKDES)), r3 = docs.get(s.DOCNUM);
+    if (!h3?.PONUM || !r3 || r3.REFNUM === h3.PONUM) continue;
+    const k = `${h3.PONUM}\t${s.DOCNUM}`;
+    parts.set(k, round((parts.get(k) ?? 0) + s.TRNVAL));
+  }
+  for (const [k, amount] of parts) {
+    const [po, doc] = k.split("\t");
+    const r3 = docs.get(doc);
+    add(po, { docNo: doc, date: r3.DOCDAT, netAmt: amount, docStat: r3.DOCSTAT });
   }
   const units = new Map(), deps = new Map();
   for (const t of istab) {
@@ -121,6 +140,7 @@ export function readExpress(dir) {
       apmas: table(dir, "APMAS"),
       istab: table(dir, "ISTAB"),
       aptrn: table(dir, "APTRN"),
+      stcrd: table(dir, "STCRD"),
     }),
     company: companyFromIsinfo(table(dir, "ISINFO")),
   };

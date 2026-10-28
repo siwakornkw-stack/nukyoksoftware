@@ -38,11 +38,6 @@ export async function POST(req: Request) {
 
   const stale = "ใบสั่งซื้อนี้ถูกแก้ไขใน Express หลังจากเปิดหน้านี้ กดรีเฟรชแล้วตรวจอีกครั้ง";
   if (status && row.ContentHash !== hash) return NextResponse.json({ error: stale }, { status: 409 });
-  // A PK whose R3 is being paid back (PZ) keeps its approval.
-  if (status !== "approved" && isPk(poNo)) {
-    const pay = await prisma.pkPayment.findUnique({ where: { PurchaseOrderId: row.PurchaseOrderId }, select: { Status: true, PzNo: true } });
-    if (pay && pay.Status !== "error") return NextResponse.json({ error: `ใบนี้มีการจ่ายคืนแล้ว (${pay.PzNo ?? "กำลังเปิด PZ"}) เปลี่ยนผลอนุมัติไม่ได้` }, { status: 400 });
-  }
   const { PurchaseOrderId, ContentHash, ...before } = row;
 
   // Conditional on the hash, so a sync landing between the check and this write
@@ -62,6 +57,14 @@ export async function POST(req: Request) {
       : { ApprovalStatus: null, ApprovalNote: null, ApprovedBy: null, ApprovedAt: null, ...r3 },
   });
   if (!count) return NextResponse.json({ error: stale }, { status: 409 });
+  // A PK opened from a fuel bill on the web: approving sends its H3 to the
+  // office PC (the R3 then takes it in); taking the approval back before the
+  // H3 is written holds it again. A written H3 stays: undoing it is the office's call.
+  if (isPk(poNo) && status === "approved") {
+    await prisma.expressFuelOrder.updateMany({ where: { TenantId: DEFAULT_TENANT_ID, PkNo: poNo, Status: "pk", WithH3: true }, data: { Status: "h3", Error: null } });
+  } else if (isPk(poNo)) {
+    await prisma.expressFuelOrder.updateMany({ where: { TenantId: DEFAULT_TENANT_ID, PkNo: poNo, Status: "h3" }, data: { Status: "pk" } });
+  }
 
   const after = (await prisma.purchaseOrder.findUnique({ where: { PurchaseOrderId }, select }))!;
   await audit("PurchaseOrder", PurchaseOrderId, status ? status : "unapprove", s.username, { PoNo: poNo, ...before }, { PoNo: poNo, ...after });

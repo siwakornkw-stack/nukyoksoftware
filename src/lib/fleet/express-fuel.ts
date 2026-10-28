@@ -2,10 +2,16 @@
 //
 // The office PC sends the fuel master data (suppliers, per-vehicle items) read
 // from Express's fuel PO history (scripts/express/fuel-masters.mjs, with the PO
-// sync). Saving bills on /fleet/fuel/import/bills with "สั่งเปิด PK + H3" queues
-// an ExpressFuelOrder per new bill; the PC writes the PK (+ H3) into Express and
-// reports back through /api/cron/express-fuel. The R3 follows when an admin
-// approves the PK on /po/pk.
+// sync). Saving bills on /fleet/fuel/import/bills with "สั่งเปิด PK" queues an
+// ExpressFuelOrder per new bill, and the PC writes the PK into Express. When an
+// admin approves the PK on /po/pk the order goes back to the PC for its H3, and
+// the R3 queue then adds the H3 to the R3 of the bill's date. The PC reports
+// back through /api/cron/express-fuel.
+//
+// Order status: queued (PK to write) -> pk (PK written, waiting for approval)
+// -> h3 (approved, H3 to write) -> done; a PK-only bill (stock item, VAT not
+// claimable: staff key that H3) is done once its PK is written. error keeps
+// the stage: no PkNo yet = the PK failed.
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
@@ -39,15 +45,6 @@ const mastersSchema = z.object({
   // The PC writes the PK/H3 (EXPRESS_FUEL_MODE=live). Off: nothing would ever
   // write a queued bill, so the web does not offer it.
   writer: z.boolean().catch(false),
-  // Paying a PK's R3 from a transfer slip (src/lib/po/pz.ts): the bank accounts
-  // payments leave from (Express payment types), the R3 creditor, and whether
-  // the PC writes the PZ (EXPRESS_PZ_MODE=live).
-  banks: z
-    .array(z.object({ code: text(2), name: text(60), account: text(15), accountName: text(80) }))
-    .max(30)
-    .catch([]),
-  creditor: z.object({ code: text(10), name: text(120) }).nullable().catch(null),
-  pzWriter: z.boolean().catch(false),
 });
 export type FuelMasters = z.infer<typeof mastersSchema> & { at: string };
 export type FuelItem = FuelMasters["items"][number];
@@ -180,11 +177,15 @@ export async function queueOrder(
 }
 
 export const ORDER_STATUS_LABEL: Record<string, string> = {
-  queued: "กำลังเปิดใน Express",
-  done: "เปิดแล้ว",
+  queued: "กำลังเปิด PK",
+  pk: "เปิด PK แล้ว รออนุมัติ",
+  h3: "อนุมัติแล้ว กำลังเปิด H3",
+  done: "เปิดครบแล้ว",
   error: "ไม่สำเร็จ",
   cancelled: "ยกเลิก",
 };
+// Being written by the office PC right now: the bill must not change under it.
+export const ORDER_BUSY = ["queued", "h3"];
 
 export async function recentOrders(take = 30) {
   const rows = await prisma.expressFuelOrder.findMany({
