@@ -113,6 +113,18 @@ export async function queuePayment(p: PayInput, username: string) {
   const prev = po.Payment;
   if (prev?.Status === "done") return { error: `ใบนี้จ่ายแล้ว (${prev.PzNo ?? "PZ"})` };
   if (prev?.Status === "queued") return { error: "กำลังเปิด PZ ของใบนี้ใน Express อยู่" };
+  // One transfer pays one bill: the same slip (file or bank reference) twice
+  // would book one transfer as two payments.
+  const reused = await prisma.pkPayment.findFirst({
+    where: {
+      TenantId: DEFAULT_TENANT_ID,
+      PurchaseOrderId: { not: po.PurchaseOrderId },
+      Status: { not: "error" },
+      OR: [{ SlipUrl: p.slipUrl }, ...(p.ref ? [{ BankRef: p.ref }] : [])],
+    },
+    include: { PurchaseOrder: { select: { PoNo: true } } },
+  });
+  if (reused) return { error: `สลิปนี้ใช้จ่าย ${reused.PurchaseOrder.PoNo} ไปแล้ว${reused.BankRef ? ` (อ้างอิง ${reused.BankRef})` : ""}` };
 
   const data = {
     Status: "queued",

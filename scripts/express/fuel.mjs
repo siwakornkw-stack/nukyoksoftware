@@ -37,10 +37,16 @@ export function planFuel(order, { popr, poprit, stmas, apmas, aptrn, isprd, isru
   if (!item) return { status: "error", reason: `ไม่พบรหัสรถ ${order.item} ใน Express` };
   if (!(order.liters > 0) || !(order.amount > 0)) return { status: "error", reason: "ลิตรหรือยอดเงินเป็นศูนย์" };
   if (!order.invoice) return { status: "error", reason: "ไม่มีเลขที่ใบกำกับภาษี" };
+  if (order.price > 0 && Math.abs(order.liters * order.price - order.amount) > 1) {
+    return { status: "error", reason: `ลิตร × ราคาต่อลิตร (${r2(order.liters * order.price)}) ไม่ตรงกับยอดเงิน (${order.amount})` };
+  }
 
-  // Already in Express? An H3 for this tax invoice from this supplier (staff may
-  // have keyed it) means nothing is written at all.
-  const h3 = aptrn.find((r) => r.DOCNUM.startsWith("H3") && r.SUPCOD === order.supplier && r.REFNUM === order.invoice && r.DOCSTAT !== "C");
+  // Already in Express? An H3 for this tax invoice (staff may have keyed it,
+  // perhaps under another branch's supplier code: then the amount must match)
+  // means nothing is written at all.
+  const h3 = aptrn.find(
+    (r) => r.DOCNUM.startsWith("H3") && r.REFNUM === order.invoice && r.DOCSTAT !== "C" && (r.SUPCOD === order.supplier || r2(r.NETAMT) === r2(order.amount))
+  );
   if (h3) return { status: "exists", pkNo: h3.PONUM || "", h3No: h3.DOCNUM };
   const pk = popr.find(
     (p) => p.PONUM.startsWith("PK") && p.SUPCOD === order.supplier && p.PODAT === order.date && p.YOUREF === order.invoice && p.DOCSTAT !== "C"

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui";
 import { thDate } from "@/lib/format";
+import { priceOff } from "@/lib/fleet/fuel-price";
 
 interface Vehicle {
   id: string;
@@ -90,6 +91,7 @@ export function BillImport() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [express, setExpress] = useState<ExpressChoices | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [admin, setAdmin] = useState(false);
   const [toExpress, setToExpress] = useState(true);
   const [bills, setBills] = useState<Bill[]>([]);
   const [saving, setSaving] = useState(false);
@@ -104,9 +106,22 @@ export function BillImport() {
         setVehicles(d.vehicles ?? []);
         setExpress(d.express ?? null);
         setOrders(d.orders ?? []);
+        setAdmin(!!d.admin);
       })
       .catch(() => {});
   }, []);
+
+  // A bill whose PK/H3 failed in Express goes back in the office PC's queue (admin).
+  async function retry(id: string) {
+    const res = await fetch("/api/fleet/fuel-bills/retry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    }).catch(() => null);
+    const d = res ? await res.json().catch(() => ({})) : {};
+    if (!res?.ok) return setError(d.error || "ลองใหม่ไม่สำเร็จ");
+    loadLists();
+  }
   useEffect(() => {
     loadLists();
   }, [loadLists]);
@@ -271,7 +286,7 @@ export function BillImport() {
     if (!itemOf(b.expressItem)) return "เลือกรหัสรถใน Express";
     if (!b.invoice.trim()) return "ต้องมีเลขที่ใบกำกับภาษี";
     if (!(Number(b.liters) > 0)) return "ต้องกรอกจำนวนลิตร";
-    return "";
+    return priceOff({ liters: Number(b.liters), price: Number(b.price) || 0, amount: Number(b.amount) || 0 });
   };
 
   const chosen = bills.filter((b) => b.include && b.state === "ok");
@@ -634,6 +649,11 @@ export function BillImport() {
                     <td className={`py-2 pr-3 ${ORDER_STYLE[o.status] ?? ""}`}>
                       {ORDER_LABEL[o.status] ?? o.status}
                       {o.error && <div className="text-xs text-rose-300">{o.error}</div>}
+                      {o.status === "error" && admin && (
+                        <button type="button" onClick={() => retry(o.id)} className="mt-1 rounded-md px-2 py-0.5 text-xs bg-slate-800/60 hover:bg-slate-700/60">
+                          ↻ ลองใหม่
+                        </button>
+                      )}
                     </td>
                     <td className="py-2 text-slate-300">
                       {o.pkNo && (

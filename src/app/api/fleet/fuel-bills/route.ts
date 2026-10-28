@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getSession, isAdmin } from "@/lib/auth";
 import { readError } from "@/lib/fuel/read-error";
 import { commitBills, expressChoices, lastOdo, parseRows, readBill, readOdometer, storeBillPhoto, storeOdometerPhoto, vehicleList } from "@/lib/fleet/fuel-bills";
 import { recentOrders } from "@/lib/fleet/express-fuel";
@@ -13,12 +13,13 @@ const MAX_BYTES = 10 * 1024 * 1024;
 // latest bills sent to Express with their state.
 // ?odo=<VehicleId>&date=YYYY-MM-DD: mileage the next fill-up starts from.
 export async function GET(req: Request) {
-  if (!(await getSession())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const q = new URL(req.url).searchParams;
   const vid = q.get("odo");
   if (vid) return NextResponse.json({ lastOdo: await lastOdo(vid, q.get("date") ?? "") });
   const [vehicles, express, orders] = await Promise.all([vehicleList(), expressChoices(), recentOrders()]);
-  return NextResponse.json({ vehicles, express, orders });
+  return NextResponse.json({ vehicles, express, orders, admin: isAdmin(s) });
 }
 
 // multipart file=<one bill photo>: store the photo and read it. No fuel row is saved.

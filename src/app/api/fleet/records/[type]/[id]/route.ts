@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getSession, isAdmin } from "@/lib/auth";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { getRecordType } from "@/lib/fleet/record-types";
@@ -93,6 +93,22 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ type: string;
     const parsed = parseScalar(f, value);
     if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
     data[f.name] = parsed.value;
+  }
+
+  // A fuel bill booked in Express (PK/H3) was written from these figures: while
+  // it is being written they stay, and afterwards only an admin (who corrects
+  // Express to match) may change them.
+  if (def.key === "gasoline") {
+    const order = await prisma.expressFuelOrder.findUnique({ where: { GasolineCostId: id }, select: { Status: true, PkNo: true, H3No: true } });
+    if (order?.Status === "queued" || order?.Status === "done") {
+      const key = (k: string, v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : k === "Liters" || k === "Amount" ? String(Number(v)) : String(v ?? "").trim());
+      const changed = ["VehicleId", "DateTime", "TaxInvoiceNumber", "Liters", "Amount"].filter((k) => k in data && key(k, data[k]) !== key(k, row[k]));
+      if (changed.length && order.Status === "queued") return NextResponse.json({ error: "บิลนี้กำลังเปิดใน Express รอสักครู่แล้วลองใหม่" }, { status: 400 });
+      if (changed.length && !isAdmin(session)) {
+        const docs = [order.PkNo, order.H3No].filter(Boolean).join(" / ");
+        return NextResponse.json({ error: `บิลนี้เปิดใน Express แล้ว (${docs}) วันที่ เลขที่ใบกำกับ ลิตร ยอดเงิน และรถ แก้ได้เฉพาะผู้ดูแลระบบ (ต้องแก้ใน Express ให้ตรงกันด้วย)` }, { status: 400 });
+      }
+    }
   }
 
   // A fuel row checked at /fleet/fuel/audit was checked with its old values.

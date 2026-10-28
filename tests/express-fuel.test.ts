@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { h3Prefix, lineAmounts, planFuel } from "../scripts/express/fuel.mjs";
 import { buildFuelMasters } from "../scripts/express/fuel-masters.mjs";
 import { checkExpressPick, expressInvoice, guessSupplier, suggestItem, type FuelMasters } from "@/lib/fleet/express-fuel";
+import { priceOff } from "@/lib/fleet/fuel-price";
+import { parseRows } from "@/lib/fleet/fuel-bills";
 
 const isprd = [{ BEG1NY: "2021-01-01", END1NY: "2027-01-31", LOCK1NY: "N", BEG2NY: "2027-02-01", END2NY: "2027-02-28", LOCK2NY: "Y" }];
 
@@ -15,7 +17,7 @@ const tables = (extra: Record<string, unknown[]> = {}) => ({
   ],
   apmas: [{ SUPCOD: "บ015", SUPNAM: "บางจากกรีนเนท", PRENAM: "บริษัท", TAXID: "0105556000001", ORGNUM: "00012" }],
   aptrn: [
-    { DOCNUM: "H3691013-01", SUPCOD: "บ015", REFNUM: "26101300000009", PONUM: "PP0002773", DOCSTAT: "N" },
+    { DOCNUM: "H3691013-01", SUPCOD: "บ015", REFNUM: "26101300000009", PONUM: "PP0002773", DOCSTAT: "N", NETAMT: 1500.5 },
     { DOCNUM: "H3691014-01", SUPCOD: "บ015", REFNUM: "26101400000001", PONUM: "PP0002780", DOCSTAT: "C" },
   ],
   isprd,
@@ -77,10 +79,17 @@ describe("fuel PK + H3 plan", () => {
 
   it("writes nothing when the tax invoice already has an H3 from that supplier", () => {
     expect(planFuel(order({ invoice: "26101300000009" }), tables())).toEqual({ status: "exists", pkNo: "PP0002773", h3No: "H3691013-01" });
-    // a cancelled H3 does not count, nor one from another supplier
+    // a cancelled H3 does not count
     expect(planFuel(order({ invoice: "26101400000001" }), tables()).status).toBe("ready");
+    // another supplier code (another branch): the same invoice counts only with the same amount
     const other = tables({ apmas: [...tables().apmas, { SUPCOD: "ป001", SUPNAM: "ปตท", PRENAM: "", TAXID: "", ORGNUM: "" }] });
-    expect(planFuel(order({ supplier: "ป001", invoice: "26101300000009" }), other).status).toBe("ready");
+    expect(planFuel(order({ supplier: "ป001", invoice: "26101300000009", amount: 1000, price: 0 }), other).status).toBe("ready");
+    expect(planFuel(order({ supplier: "ป001", invoice: "26101300000009", amount: 1500.5, price: 0 }), other).status).toBe("exists");
+  });
+
+  it("refuses litres x price far from the paid total (a typo)", () => {
+    expect(planFuel(order({ price: 329.4 }), tables()).reason).toMatch(/ไม่ตรงกับยอดเงิน/);
+    expect(planFuel(order({ liters: 30.51, amount: 1005.1 }), tables()).status).toBe("ready"); // rounding of the litres is fine
   });
 
   it("adds only the H3 to a PK already opened for the bill", () => {
@@ -217,5 +226,19 @@ describe("fuel bills -> Express choices", () => {
     expect(checkExpressPick(pick, { ...bill, liters: 0 }, masters)).toEqual({ error: "ต้องกรอกจำนวนลิตร" });
     const noDep = { ...masters, items: [item("70-1826", "x", { depCode: "" })] };
     expect(checkExpressPick(pick, bill, noDep)).toEqual({ error: "รหัสรถนี้ไม่มีแผนกใน Express" });
+    // a price typo would be booked as a huge discount
+    expect(checkExpressPick(pick, { ...bill, price: 350 }, masters)).toHaveProperty("error");
+    expect(priceOff({ liters: 20, price: 35, amount: 700 })).toBe("");
+    expect(priceOff({ liters: 30.513, price: 32.94, amount: 1005.1 })).toBe("");
+    expect(priceOff({ liters: 20, price: 0, amount: 700 })).toBe(""); // no price on the bill
+    expect(priceOff({ liters: 2, price: 35, amount: 700 })).toMatch(/ไม่ตรงกับยอดเงิน/);
+  });
+});
+
+describe("fuel bill rows from the import page", () => {
+  const row = (o: Record<string, unknown> = {}) => ({ vehicleId: "v1", date: "2026-10-28", invoice: "ต1", liters: 10, amount: 350, ...o });
+  it("refuses a bill dated after today (Bangkok)", () => {
+    expect(parseRows([row()])).toHaveProperty("rows");
+    expect(parseRows([row({ date: "2099-01-01" })])).toEqual({ error: "บิลที่ 1: วันที่อยู่ในอนาคต" });
   });
 });

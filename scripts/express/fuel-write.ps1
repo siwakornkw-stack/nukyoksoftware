@@ -57,8 +57,10 @@ try {
   foreach ($t in $tables) { $open += "USE $($t[0]) INDEX $($t[0]) SHARED IN 0 ALIAS $($t[1])`r`n" }
   [void](Run ($open + "RETURN 'ok'"))
 
-  # Already in Express? (staff may have keyed this bill, or an earlier run wrote it)
-  $h3 = Run "SELECT fwap`r`nLOCATE FOR LEFT(docnum, 2) == 'H3' AND supcod == PADR(p1, LEN(supcod)) AND ALLTRIM(refnum) == ALLTRIM(p2) AND docstat # 'C' AND NOT DELETED()`r`nRETURN IIF(FOUND(), ALLTRIM(fwap.docnum) + '|' + ALLTRIM(fwap.ponum), '')" @($plan.supplier.code, $plan.invoice)
+  # Already in Express? (staff may have keyed this bill, perhaps under another
+  # branch's supplier code, then with the same amount; or an earlier run wrote it)
+  $h3 = Run ("SELECT fwap`r`nLOCATE FOR LEFT(docnum, 2) == 'H3' AND ALLTRIM(refnum) == ALLTRIM(p2) AND docstat # 'C' AND NOT DELETED() AND " +
+    "(supcod == PADR(p1, LEN(supcod)) OR ROUND(netamt, 2) = ROUND(VAL(p3), 2))`r`nRETURN IIF(FOUND(), ALLTRIM(fwap.docnum) + '|' + ALLTRIM(fwap.ponum), '')") @($plan.supplier.code, $plan.invoice, (N2 $plan.total))
   if ($h3) { $p = $h3.Split("|"); $state.status = "exists"; $state.h3No = $p[0]; $state.pkNo = $p[1]; Save-Ledger; $result = "EXISTS:$($p[1])|$($p[0])"; return }
   $pkNo = [string]$plan.pkNo
   $pkRec = 0

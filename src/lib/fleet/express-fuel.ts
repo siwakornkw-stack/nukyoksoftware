@@ -11,6 +11,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { guessPlate, plateKey } from "./plates";
+import { priceOff } from "./fuel-price";
 
 const MASTERS_KEY = "express_fuel_masters";
 const STATIONS_KEY = "express_station_suppliers";
@@ -147,6 +148,8 @@ export function checkExpressPick(
   const invoice = expressInvoice(r.invoice);
   if (!invoice) return { error: "เลขที่ใบกำกับภาษีต้องมี และยาวไม่เกิน 15 ตัว (ใช้ใน H3 และรายงานภาษีซื้อ)" };
   if (r.liters <= 0) return { error: "ต้องกรอกจำนวนลิตร" };
+  const off = priceOff(r);
+  if (off) return { error: off };
   const price = r.price > 0 ? r.price : Math.round((r.amount / r.liters) * 100) / 100;
   return { order: { supplier: p.supplier, item, dep, invoice, price } };
 }

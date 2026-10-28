@@ -209,6 +209,8 @@ export function parseRows(input: unknown): { rows: BillRow[] } | { error: string
     const ex = (o.express ?? null) as Record<string, unknown> | null;
     if (ex && typeof ex === "object") row.express = { supplier: str(ex.supplier, 10), item: str(ex.item, 20) };
     if (!row.vehicleId) return { error: `${n}: ต้องเลือกรถ` };
+    // Bangkok's calendar day: a bill from tomorrow is a typo (and would be booked in Express).
+    if (row.date > new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10)) return { error: `${n}: วันที่อยู่ในอนาคต` };
     if (row.amount <= 0) return { error: `${n}: ต้องกรอกจำนวนเงิน` };
     if (row.liters < 0 || row.odoStart < 0 || row.odoEnd < 0) return { error: `${n}: ตัวเลขติดลบไม่ได้` };
     rows.push(row);
