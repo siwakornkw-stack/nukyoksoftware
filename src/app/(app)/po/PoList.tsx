@@ -9,6 +9,7 @@ import { getSession, isAdmin } from "@/lib/auth";
 import { approvalWhere, bkkDateTime, effectiveApproval, getSyncInfo, r3State, r3WaitingWhere } from "@/lib/po/purchase-orders";
 import { ApprovalBadge, DocStatBadge, R3Badge } from "./badges";
 import { QuickApprove } from "./QuickApprove";
+import { AttachBill } from "./PoFiles";
 
 export type SP = { q?: string; ap?: string; ex?: string; from?: string; to?: string; page?: string };
 
@@ -37,8 +38,9 @@ export const PO_BOOKS = {
 } satisfies Record<string, { title: string; path: string; where: Prisma.PurchaseOrderWhereInput }>;
 export type PoBook = keyof typeof PO_BOOKS;
 
-// The /po list, shared by the PO menu and the PK (new fuel PO) menu.
-export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
+// The /po list, shared by the PO menu and the PK (new fuel PO) menu. top goes
+// between the header and the filters (the PK page's bill upload).
+export async function PoList({ sp, book, top }: { sp: SP; book: PoBook; top?: React.ReactNode }) {
   const { title, path, where: bookWhere } = PO_BOOKS[book];
   const q = sp.q?.trim() ?? "";
   const tabs = book === "pk" ? PK_TABS : AP_TABS;
@@ -69,7 +71,7 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
       take: PAGE,
       select: {
         PoNo: true, PoDate: true, SupplierName: true, DepName: true, NetAmt: true, DocStat: true, MissingInExpress: true, ApprovalStatus: true,
-        ApprovedBy: true, ContentHash: true, R3DocNo: true, R3Status: true, R3Error: true,
+        ApprovedBy: true, ContentHash: true, R3DocNo: true, R3Status: true, R3Error: true, _count: { select: { Files: true } },
       },
     }),
     prisma.purchaseOrder.count({ where }),
@@ -79,6 +81,9 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
   ]);
   const admin = !!s && isAdmin(s);
   const pages = Math.max(1, Math.ceil(total / PAGE));
+  // Bills attached on the web for the approver. PK bills come in through the
+  // upload at the top of the PK page instead.
+  const bills = book === "main";
 
   const keep: Record<string, string> = {};
   if (q) keep.q = q;
@@ -94,10 +99,12 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
         subtitle={
           sync
             ? `ดึงจาก Express ล่าสุด ${bkkDateTime(sync.at)} · ${sync.count.toLocaleString("th-TH")} ใบ` +
-              (book === "pk" ? " · อนุมัติแล้วระบบเปิด H3 และเพิ่มเข้า R3 ของวันที่บิลให้" : " · ดูอย่างเดียว ไม่แก้ไขข้อมูลใน Express")
+              (book === "pk" ? " · อนุมัติแล้วระบบเปิด H3 และเพิ่มเข้า R3 ของวันที่บิลให้" : " · ดูอย่างเดียว ไม่แก้ไขข้อมูลใน Express · แนบรูปบิลประกอบการอนุมัติได้")
             : "ยังไม่เคยดึงข้อมูลจาก Express (รัน scripts/express-po-sync.mjs บนเครื่องที่มี Express)"
         }
       />
+
+      {top && <div className="mb-4">{top}</div>}
 
       <Card className="mb-4">
         <form className="flex flex-wrap items-end gap-2" action={path}>
@@ -152,6 +159,7 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
                 <th className="py-2 pr-3">แผนก</th>
                 <th className="py-2 pr-3 text-right">ยอดสุทธิ</th>
                 <th className="py-2 pr-3">สถานะ Express</th>
+                {bills && <th className="py-2 pr-3">บิล</th>}
                 <th className="py-2 pr-3">อนุมัติ</th>
                 <th className="py-2"></th>
               </tr>
@@ -167,6 +175,11 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
                   <td className="py-2 pr-3 text-slate-400">{r.DepName || "-"}</td>
                   <td className="py-2 pr-3 text-right whitespace-nowrap">{baht(dec(r.NetAmt))}</td>
                   <td className="py-2 pr-3"><DocStatBadge stat={r.DocStat} missing={r.MissingInExpress} /></td>
+                  {bills && (
+                    <td className="py-2 pr-3">
+                      <AttachBill poNo={r.PoNo} count={r._count.Files} />
+                    </td>
+                  )}
                   <td className="py-2 pr-3">
                     {(() => {
                       const k = effectiveApproval(r);
@@ -191,7 +204,7 @@ export async function PoList({ sp, book }: { sp: SP; book: PoBook }) {
               ))}
               {!rows.length && (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-500">
+                  <td colSpan={bills ? 9 : 8} className="py-8 text-center text-slate-500">
                     {book === "pk" && !counts[tabs.findIndex((t) => t.key === "all")] && !(q || ex || from || to)
                       ? "ยังไม่มีใบสั่งซื้อ PK ใน Express (สร้างที่ Express: ซื้อ → ใบสั่งซื้อ → ใบสั่งซื้อ-น้ำมัน(ใหม่) แล้วระบบจะดึงมาภายใน 1-2 นาที)"
                       : "ไม่มีใบสั่งซื้อในกลุ่มนี้"}

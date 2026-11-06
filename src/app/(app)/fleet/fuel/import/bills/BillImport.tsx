@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui";
 import { thDate } from "@/lib/format";
 import { priceOff } from "@/lib/fleet/fuel-price";
@@ -30,6 +31,7 @@ interface Order {
   invoice: string;
   amount: number;
   pkNo: string;
+  listed: boolean; // the PK is in the PK list (the sync has brought it back)
   h3No: string;
   error: string;
 }
@@ -97,7 +99,12 @@ const ORDER_STYLE: Record<string, string> = {
 
 let nextKey = 1;
 
-export function BillImport() {
+// variant "pk": on the PK list (/po/pk), above the list. Shorter, and its table
+// keeps only the bills whose PK is not in the list yet (or that failed); the
+// list is refreshed when one gets there.
+export function BillImport({ variant }: { variant?: "pk" } = {}) {
+  const pkPage = variant === "pk";
+  const router = useRouter();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [express, setExpress] = useState<ExpressChoices | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -108,18 +115,33 @@ export function BillImport() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ created: number; dup: number; queued: number } | null>(null);
   const queue = useRef(Promise.resolve());
+  const seen = useRef<string | null>(null);
 
   const loadLists = useCallback(() => {
     fetch("/api/fleet/fuel-bills")
       .then((r) => r.json())
       .then((d) => {
+        const list: Order[] = d.orders ?? [];
         setVehicles(d.vehicles ?? []);
         setExpress(d.express ?? null);
-        setOrders(d.orders ?? []);
+        setOrders(list);
         setAdmin(!!d.admin);
+        const sig = list.map((o) => `${o.id}:${o.status}:${o.pkNo}:${o.listed}:${o.h3No}`).join();
+        if (pkPage && seen.current !== null && seen.current !== sig) router.refresh();
+        seen.current = sig;
       })
       .catch(() => {});
-  }, []);
+  }, [pkPage, router]);
+
+  // While the office PC is writing a bill, and until the sync has brought its
+  // PK into the list (a minute later), look again every 15 seconds.
+  const moving = orders.some((o) => o.status === "queued" || o.status === "h3" || (!!o.pkNo && !o.listed));
+  useEffect(() => {
+    if (!moving) return;
+    const t = setInterval(loadLists, 15000);
+    return () => clearInterval(t);
+  }, [moving, loadLists]);
+  const shownOrders = pkPage ? orders.filter((o) => o.status === "error" || (o.status !== "cancelled" && !o.listed)) : orders;
 
   // A bill whose PK/H3 failed in Express goes back in the office PC's queue (admin).
   async function retry(id: string) {
@@ -343,16 +365,30 @@ export function BillImport() {
     />
   );
 
+  const tips = (
+    <ul className="list-disc pl-5 space-y-1 text-sm text-slate-400 mb-3">
+      <li>เลือกรูปบิลได้หลายใบพร้อมกัน ระบบอ่านวันที่ เลขที่ใบกำกับ ทะเบียนรถ ลิตร และยอดเงินให้</li>
+      <li>แนบรูปเลขไมล์ (หรือชั่วโมงเครื่องจักร) ประกอบแต่ละบิลได้ กรอกเลขไมล์เองจากรูป</li>
+      <li>ตรวจกับรูปทุกใบก่อนบันทึก แก้ช่องที่อ่านผิดได้ ถ้าทะเบียนในบิลจับคู่รถไม่ได้ ให้เลือกรถเอง (ครั้งต่อไประบบจะจำให้)</li>
+      <li>บิลที่มีอยู่แล้ว (เลขที่ใบกำกับซ้ำ) จะไม่ถูกติ๊กไว้ และไม่บันทึกซ้ำ ไฟล์ Excel ประจำเดือนที่นำเข้าทีหลังก็จะข้ามบิลเหล่านี้</li>
+    </ul>
+  );
+
   return (
     <div className="space-y-4">
       <Card>
-        <ul className="list-disc pl-5 space-y-1 text-sm text-slate-400 mb-3">
-          <li>เลือกรูปบิลได้หลายใบพร้อมกัน ระบบอ่านวันที่ เลขที่ใบกำกับ ทะเบียนรถ ลิตร และยอดเงินให้</li>
-          <li>แนบรูปเลขไมล์ (หรือชั่วโมงเครื่องจักร) ประกอบแต่ละบิลได้ กรอกเลขไมล์เองจากรูป</li>
-          <li>ตรวจกับรูปทุกใบก่อนบันทึก แก้ช่องที่อ่านผิดได้ ถ้าทะเบียนในบิลจับคู่รถไม่ได้ ให้เลือกรถเอง (ครั้งต่อไประบบจะจำให้)</li>
-          <li>บิลที่มีอยู่แล้ว (เลขที่ใบกำกับซ้ำ) จะไม่ถูกติ๊กไว้ และไม่บันทึกซ้ำ ไฟล์ Excel ประจำเดือนที่นำเข้าทีหลังก็จะข้ามบิลเหล่านี้</li>
-        </ul>
-        <label className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-700 py-8 cursor-pointer hover:border-sky-400 transition-colors">
+        {pkPage ? (
+          <div className="mb-3">
+            <div className="font-medium">🧾 อัปโหลดบิลน้ำมัน เพื่อเปิด PK</div>
+            <details className="mt-1 text-xs text-slate-400">
+              <summary className="cursor-pointer hover:text-white">วิธีใช้</summary>
+              <div className="mt-2">{tips}</div>
+            </details>
+          </div>
+        ) : (
+          tips
+        )}
+        <label className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-700 ${pkPage ? "py-5" : "py-8"} cursor-pointer hover:border-sky-400 transition-colors`}>
           <div className="text-3xl">🧾</div>
           <div className="text-sm text-slate-300">เลือกรูปบิล (JPG / PNG) ได้หลายใบ</div>
           <div className="text-xs text-slate-500">ยังไม่บันทึกจนกว่าจะกดยืนยัน</div>
@@ -377,8 +413,8 @@ export function BillImport() {
                 สั่งเปิด PK ใน Express ให้บิลที่บันทึก
               </label>
               <div className="mt-1 text-xs text-slate-400">
-                ระบบเปิดใบสั่งซื้อน้ำมัน (PK) ใน Express ให้ภายใน 1-2 นาที แล้ว admin อนุมัติ PK ที่เมนู ใบสั่งซื้อน้ำมันใหม่ (PK)
-                ระบบจะเปิด H3 (ซื้อสดด้วยบัตร ลงภาษีซื้อ) และเพิ่มเข้า R3 ของวันที่บิลให้ · <b className="text-amber-300">ตรวจเลขที่ใบกำกับภาษีให้ตรงกับบิล</b>{" "}
+                ระบบเปิดใบสั่งซื้อน้ำมัน (PK) ใน Express ให้ภายใน 1-2 นาที
+                {pkPage ? " แล้วขึ้นในรายการด้านล่าง เมื่อ admin อนุมัติ PK" : " แล้ว admin อนุมัติ PK ที่เมนู ใบสั่งซื้อน้ำมันใหม่ (PK)"} ระบบจะเปิด H3 (ซื้อสดด้วยบัตร ลงภาษีซื้อ) และเพิ่มเข้า R3 ของวันที่บิลให้ · <b className="text-amber-300">ตรวจเลขที่ใบกำกับภาษีให้ตรงกับบิล</b>{" "}
                 เพราะเข้ารายงานภาษีซื้อ · บิลที่สั่งเปิดแล้ว อย่าคีย์ซ้ำใน Express
               </div>
             </>
@@ -616,10 +652,10 @@ export function BillImport() {
         </div>
       )}
 
-      {orders.length > 0 && (
+      {shownOrders.length > 0 && (
         <Card>
           <div className="mb-2 flex items-center justify-between">
-            <div className="font-medium">สั่งเปิดใน Express ล่าสุด</div>
+            <div className="font-medium">{pkPage ? "บิลที่กำลังเปิด PK" : "สั่งเปิดใน Express ล่าสุด"}</div>
             <button type="button" onClick={loadLists} className="rounded-lg px-2.5 py-1 text-xs bg-slate-800/60 hover:bg-slate-700/60">
               ↻ รีเฟรช
             </button>
@@ -637,7 +673,7 @@ export function BillImport() {
                 </tr>
               </thead>
               <tbody>
-                {orders.map((o) => (
+                {shownOrders.map((o) => (
                   <tr key={o.id} className="border-b border-slate-800/50">
                     <td className="py-2 pr-3 whitespace-nowrap">{thDate(o.date)}</td>
                     <td className="py-2 pr-3">{o.plate}</td>

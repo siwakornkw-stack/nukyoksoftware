@@ -907,9 +907,23 @@ model PurchaseOrder {
   ApprovalNote String?
   ApprovedBy String?
   ApprovedAt DateTime?
+  Files PurchaseOrderFile[]
   @@unique([TenantId, PoNo])
   @@index([TenantId, PoDate])
   @@index([TenantId, ApprovalStatus])
+}
+
+// A bill / quotation attached on the web to a PO, for the approver to look at
+// (Express is not touched). Private file under UPLOAD_DIR: po-bills/YYYY-MM/<uuid>.jpg|pdf.
+model PurchaseOrderFile {
+  PurchaseOrderFileId String @id @default(uuid()) @db.VarChar(36)
+  PurchaseOrderId String @db.VarChar(36)
+  PurchaseOrder PurchaseOrder @relation(fields: [PurchaseOrderId], references: [PurchaseOrderId])
+  FileName String // as uploaded, for display
+  Url String
+  CreatedByUsername String
+  CreatedAt DateTime @default(now())
+  @@index([PurchaseOrderId])
 }
 
 // A fuel bill saved on the web (GasolineCost) that staff asked to book in

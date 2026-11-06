@@ -11,6 +11,8 @@ import { ApprovalPanel } from "./ApprovalPanel";
 import { prisma } from "@/lib/db";
 import { DEFAULT_TENANT_ID } from "@/lib/tenant";
 import { ORDER_STATUS_LABEL } from "@/lib/fleet/express-fuel";
+import { poFiles } from "@/lib/po/files";
+import { PoFiles } from "../PoFiles";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +25,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   const { row, po } = found;
   const sup = po.supplier;
   const r3 = r3State(row);
+  const files = await poFiles(row.PoNo);
   // A PK written from a fuel bill on the web: its bill and odometer photos, and
   // where its H3 stands (written by the office PC once the PK is approved).
   const fromBill = row.PoNo.startsWith("PK")
@@ -172,6 +175,8 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
           </div>
         </Card>
       )}
+
+      <PoFiles poNo={po.poNo} initial={files} admin={!!s && isAdmin(s)} />
 
       <ApprovalPanel
         poNo={po.poNo}

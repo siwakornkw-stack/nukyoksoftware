@@ -194,6 +194,13 @@ export async function recentOrders(take = 30) {
     take,
     include: { GasolineCost: { select: { Vehicle: { select: { LicensePlatePrefix: true, LicensePlateSuffix: true } } } } },
   });
+  // A written PK reaches the PK list with the office PC's next sync, a minute later.
+  const pkNos = rows.flatMap((r) => (r.PkNo ? [r.PkNo] : []));
+  const listed = new Set(
+    pkNos.length
+      ? (await prisma.purchaseOrder.findMany({ where: { TenantId: DEFAULT_TENANT_ID, PoNo: { in: pkNos } }, select: { PoNo: true } })).map((p) => p.PoNo)
+      : []
+  );
   return rows.map((r) => ({
     id: r.ExpressFuelOrderId,
     status: r.Status,
@@ -203,6 +210,7 @@ export async function recentOrders(take = 30) {
     invoice: r.Invoice,
     amount: Number(r.Amount),
     pkNo: r.PkNo ?? "",
+    listed: !!r.PkNo && listed.has(r.PkNo),
     h3No: r.H3No ?? "",
     error: r.Error ?? "",
     by: r.RequestedBy,
